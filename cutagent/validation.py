@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
-from cutagent.engine import parse_edl, _is_reference
+from cutagent.engine import parse_edl, _is_reference, _is_input_reference, _INPUT_REF_PREFIX
 from cutagent.errors import CutAgentError
 from cutagent.models import (
     EDL,
@@ -16,6 +17,7 @@ from cutagent.models import (
     FadeOp,
     SpeedOp,
     parse_time,
+    format_time,
 )
 from cutagent.probe import probe
 
@@ -30,6 +32,7 @@ class ValidationResult:
     def __init__(self) -> None:
         self.errors: list[dict] = []
         self.warnings: list[dict] = []
+        self.estimated_duration: Optional[float] = None
 
     @property
     def valid(self) -> bool:
@@ -42,11 +45,37 @@ class ValidationResult:
         self.warnings.append({"code": code, "message": message, **context})
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "valid": self.valid,
             "errors": self.errors,
             "warnings": self.warnings,
         }
+        if self.estimated_duration is not None:
+            d["estimated_duration"] = round(self.estimated_duration, 3)
+            d["estimated_duration_formatted"] = format_time(self.estimated_duration)
+        return d
+
+
+# ---------------------------------------------------------------------------
+# Duration resolution helper
+# ---------------------------------------------------------------------------
+
+def _resolve_source_duration(
+    source: str,
+    file_durations: dict[str, float],
+    op_durations: dict[int, Optional[float]],
+    inputs: list[str],
+) -> Optional[float]:
+    """Look up the estimated duration of a source — input ref, op ref, or file path."""
+    if _is_input_reference(source):
+        idx = int(source[len(_INPUT_REF_PREFIX):])
+        if 0 <= idx < len(inputs):
+            return file_durations.get(inputs[idx])
+        return None
+    if _is_reference(source):
+        ref_idx = int(source[1:])
+        return op_durations.get(ref_idx)
+    return file_durations.get(source)
 
 
 # ---------------------------------------------------------------------------
@@ -60,15 +89,17 @@ def validate_edl(raw: str | dict) -> ValidationResult:
         - EDL JSON is parseable
         - All input files exist
         - Timestamps are valid and within source duration
-        - $N references point to existing earlier operations
+        - $input.N and $N references point to valid targets
         - Output directory exists
         - Reorder indices are in range
+
+    Also computes an estimated output duration when possible.
 
     Args:
         raw: JSON string or dict representing the EDL.
 
     Returns:
-        ValidationResult with errors and warnings.
+        ValidationResult with errors, warnings, and estimated_duration.
     """
     result = ValidationResult()
 
@@ -91,12 +122,23 @@ def validate_edl(raw: str | dict) -> ValidationResult:
             except CutAgentError as exc:
                 result.add_error(exc.code, exc.message)
 
-    # Track which operation indices have been produced
+    # Track which operation indices have been produced and their estimated durations
     produced: set[int] = set()
+    op_durations: dict[int, Optional[float]] = {}
+    input_count = len(edl.inputs)
 
     for idx, op in enumerate(edl.operations):
-        _validate_operation(op, idx, produced, file_durations, result)
+        est = _validate_operation(
+            op, idx, produced, file_durations, result, input_count,
+            op_durations, edl.inputs,
+        )
+        op_durations[idx] = est
         produced.add(idx)
+
+    # The estimated output duration is the last operation's estimated duration
+    if edl.operations:
+        last_est = op_durations.get(len(edl.operations) - 1)
+        result.estimated_duration = last_est
 
     # Check output directory
     output_dir = Path(edl.output.path).parent
@@ -116,32 +158,49 @@ def _validate_operation(
     produced: set[int],
     file_durations: dict[str, float],
     result: ValidationResult,
-) -> None:
-    """Validate a single operation."""
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    """Validate a single operation. Returns estimated duration or None."""
+    _op_dur = op_durations or {}
+    _inputs = inputs or []
+
     if isinstance(op, TrimOp):
-        _validate_trim(op, idx, produced, file_durations, result)
+        return _validate_trim(op, idx, produced, file_durations, result, input_count)
     elif isinstance(op, SplitOp):
-        _validate_split(op, idx, produced, file_durations, result)
+        return _validate_split(op, idx, produced, file_durations, result, input_count)
     elif isinstance(op, ConcatOp):
-        _validate_concat(op, idx, produced, result)
+        return _validate_concat(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
     elif isinstance(op, ReorderOp):
-        _validate_reorder(op, idx, produced, result)
+        return _validate_reorder(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
     elif isinstance(op, ExtractOp):
-        _validate_extract(op, idx, produced, result)
+        return _validate_extract(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
     elif isinstance(op, FadeOp):
-        _validate_fade(op, idx, produced, file_durations, result)
+        return _validate_fade(op, idx, produced, file_durations, result, input_count, _op_dur, _inputs)
     elif isinstance(op, SpeedOp):
-        _validate_speed(op, idx, produced, result)
+        return _validate_speed(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
     else:
         result.add_error(
             "UNKNOWN_OPERATION",
             f"Op {idx}: unknown operation type: {type(op).__name__}",
         )
+        return None
 
 
-def _validate_source(source: str, produced: set[int], result: ValidationResult) -> None:
-    """Check that a source is either a valid file or a valid $N reference."""
-    if _is_reference(source):
+def _validate_source(
+    source: str, produced: set[int], result: ValidationResult, input_count: int = 0,
+) -> None:
+    """Check that a source is a valid $input.N, $N reference, or file path."""
+    if _is_input_reference(source):
+        idx = int(source[len("$input."):])
+        if idx < 0 or idx >= input_count:
+            result.add_error(
+                "INVALID_REFERENCE",
+                f"Reference {source} points to input {idx}, but only {input_count} inputs exist",
+                reference=source,
+            )
+    elif _is_reference(source):
         ref_idx = int(source[1:])
         if ref_idx not in produced:
             result.add_error(
@@ -153,19 +212,22 @@ def _validate_source(source: str, produced: set[int], result: ValidationResult) 
         result.add_error("INPUT_NOT_FOUND", f"Source file not found: {source}", path=source)
 
 
-def _validate_trim(op: TrimOp, idx: int, produced: set[int], durations: dict, result: ValidationResult) -> None:
-    _validate_source(op.source, produced, result)
+def _validate_trim(
+    op: TrimOp, idx: int, produced: set[int], durations: dict,
+    result: ValidationResult, input_count: int = 0,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count)
 
     try:
         start_sec = parse_time(op.start)
     except ValueError:
         result.add_error("INVALID_TIME_FORMAT", f"Op {idx}: invalid start time: {op.start}")
-        return
+        return None
     try:
         end_sec = parse_time(op.end)
     except ValueError:
         result.add_error("INVALID_TIME_FORMAT", f"Op {idx}: invalid end time: {op.end}")
-        return
+        return None
 
     if start_sec >= end_sec:
         result.add_error("TRIM_START_AFTER_END", f"Op {idx}: start ({op.start}) >= end ({op.end})")
@@ -177,9 +239,14 @@ def _validate_trim(op: TrimOp, idx: int, produced: set[int], durations: dict, re
             f"Op {idx}: end {op.end} ({end_sec:.3f}s) > duration ({dur:.3f}s)",
         )
 
+    return end_sec - start_sec if end_sec > start_sec else None
 
-def _validate_split(op: SplitOp, idx: int, produced: set[int], durations: dict, result: ValidationResult) -> None:
-    _validate_source(op.source, produced, result)
+
+def _validate_split(
+    op: SplitOp, idx: int, produced: set[int], durations: dict,
+    result: ValidationResult, input_count: int = 0,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count)
     dur = durations.get(op.source)
     for pt in op.points:
         try:
@@ -192,11 +259,25 @@ def _validate_split(op: SplitOp, idx: int, produced: set[int], durations: dict, 
                 "SPLIT_POINT_BEYOND_DURATION",
                 f"Op {idx}: split point {pt} ({pt_sec:.3f}s) > duration ({dur:.3f}s)",
             )
+    # Split produces the first segment — estimate as start to first point
+    if op.points:
+        try:
+            first_pt = parse_time(op.points[0])
+            return first_pt
+        except ValueError:
+            pass
+    return None
 
 
-def _validate_concat(op: ConcatOp, idx: int, produced: set[int], result: ValidationResult) -> None:
+def _validate_concat(
+    op: ConcatOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
     for seg in op.segments:
-        _validate_source(seg, produced, result)
+        _validate_source(seg, produced, result, input_count)
     if op.transition is not None and op.transition != "crossfade":
         result.add_error(
             "INVALID_TRANSITION",
@@ -208,10 +289,33 @@ def _validate_concat(op: ConcatOp, idx: int, produced: set[int], result: Validat
             f"Op {idx}: transition_duration must be > 0, got {op.transition_duration}",
         )
 
-
-def _validate_reorder(op: ReorderOp, idx: int, produced: set[int], result: ValidationResult) -> None:
+    # Estimate total duration = sum of segments minus crossfade overlaps
+    _op_dur = op_durations or {}
+    _file_dur = file_durations or {}
+    _inputs = inputs or []
+    total = 0.0
+    all_known = True
     for seg in op.segments:
-        _validate_source(seg, produced, result)
+        seg_dur = _resolve_source_duration(seg, _file_dur, _op_dur, _inputs)
+        if seg_dur is not None:
+            total += seg_dur
+        else:
+            all_known = False
+    if all_known and op.transition == "crossfade" and op.transition_duration:
+        overlaps = max(0, len(op.segments) - 1) * op.transition_duration
+        total = max(0.0, total - overlaps)
+    return total if all_known else None
+
+
+def _validate_reorder(
+    op: ReorderOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    for seg in op.segments:
+        _validate_source(seg, produced, result, input_count)
     for i in op.order:
         if i < 0 or i >= len(op.segments):
             result.add_error(
@@ -219,18 +323,48 @@ def _validate_reorder(op: ReorderOp, idx: int, produced: set[int], result: Valid
                 f"Op {idx}: reorder index {i} out of range (0–{len(op.segments) - 1})",
             )
 
+    # Estimate: sum of reordered segment durations
+    _op_dur = op_durations or {}
+    _file_dur = file_durations or {}
+    _inputs = inputs or []
+    total = 0.0
+    all_known = True
+    for i in op.order:
+        if 0 <= i < len(op.segments):
+            seg_dur = _resolve_source_duration(op.segments[i], _file_dur, _op_dur, _inputs)
+            if seg_dur is not None:
+                total += seg_dur
+            else:
+                all_known = False
+    return total if all_known else None
 
-def _validate_extract(op: ExtractOp, idx: int, produced: set[int], result: ValidationResult) -> None:
-    _validate_source(op.source, produced, result)
+
+def _validate_extract(
+    op: ExtractOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count)
     if op.stream not in ("audio", "video"):
         result.add_error(
             "INVALID_STREAM_TYPE",
             f"Op {idx}: stream must be 'audio' or 'video', got {op.stream!r}",
         )
+    # Extract preserves duration
+    return _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, inputs or [],
+    )
 
 
-def _validate_fade(op: FadeOp, idx: int, produced: set[int], durations: dict, result: ValidationResult) -> None:
-    _validate_source(op.source, produced, result)
+def _validate_fade(
+    op: FadeOp, idx: int, produced: set[int], durations: dict,
+    result: ValidationResult, input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count)
     if op.fade_in < 0 or op.fade_out < 0:
         result.add_error(
             "INVALID_FADE_DURATION",
@@ -242,19 +376,29 @@ def _validate_fade(op: FadeOp, idx: int, produced: set[int], durations: dict, re
             f"Op {idx}: at least one of fade_in or fade_out must be > 0",
         )
 
-    dur = durations.get(op.source)
-    if dur is not None and (op.fade_in + op.fade_out) > dur:
+    source_dur = _resolve_source_duration(
+        op.source, durations, op_durations or {}, inputs or [],
+    )
+    if source_dur is not None and (op.fade_in + op.fade_out) > source_dur:
         result.add_error(
             "INVALID_FADE_DURATION",
             (
                 f"Op {idx}: fade durations ({op.fade_in + op.fade_out:.3f}s) exceed "
-                f"duration ({dur:.3f}s)"
+                f"duration ({source_dur:.3f}s)"
             ),
         )
+    # Fade preserves duration
+    return source_dur
 
 
-def _validate_speed(op: SpeedOp, idx: int, produced: set[int], result: ValidationResult) -> None:
-    _validate_source(op.source, produced, result)
+def _validate_speed(
+    op: SpeedOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count)
     if op.factor <= 0:
         result.add_error(
             "INVALID_SPEED_FACTOR",
@@ -265,3 +409,10 @@ def _validate_speed(op: SpeedOp, idx: int, produced: set[int], result: Validatio
             "INVALID_SPEED_FACTOR",
             f"Op {idx}: speed factor must be between 0.25 and 100.0, got {op.factor}",
         )
+
+    source_dur = _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, inputs or [],
+    )
+    if source_dur is not None and op.factor > 0:
+        return source_dur / op.factor
+    return None
