@@ -79,6 +79,44 @@ def cmd_capabilities(_args) -> int:
                 },
                 "supports_copy_codec": False,
             },
+            "mix_audio": {
+                "description": "Overlay background music or audio onto a video's existing audio",
+                "fields": {
+                    "op": "'mix_audio'",
+                    "source": "str (video with original audio)",
+                    "audio": "str (audio file to mix in)",
+                    "mix_level": "float (0.0–1.0, default 0.3)",
+                },
+                "supports_copy_codec": False,
+            },
+            "volume": {
+                "description": "Adjust audio volume by a dB gain value",
+                "fields": {
+                    "op": "'volume'",
+                    "source": "str",
+                    "gain_db": "float (-60.0 to 60.0; positive = louder)",
+                },
+                "supports_copy_codec": True,
+            },
+            "replace_audio": {
+                "description": "Replace a video's audio track with a different audio file",
+                "fields": {
+                    "op": "'replace_audio'",
+                    "source": "str (video — keeps video stream)",
+                    "audio": "str (replacement audio file)",
+                },
+                "supports_copy_codec": True,
+            },
+            "normalize": {
+                "description": "Normalize audio loudness using EBU R128 (loudnorm)",
+                "fields": {
+                    "op": "'normalize'",
+                    "source": "str",
+                    "target_lufs": "float (default -16.0, range -70 to -5)",
+                    "true_peak_dbtp": "float (default -1.5, range -10 to 0)",
+                },
+                "supports_copy_codec": False,
+            },
         },
         "operation_example": {
             "_note": "All fields are top-level in the operation object — there is NO 'params' wrapper",
@@ -108,17 +146,21 @@ def cmd_capabilities(_args) -> int:
             "thumbnail",
             "silence",
             "audio-levels",
+            "beats",
             "summarize",
         ],
         "exit_codes": {"0": "success", "1": "validation_error", "2": "execution_error", "3": "system_error"},
         "agent_workflow": [
             "1. Run 'summarize' with --frame-dir to get content map and scene preview frames",
             "2. Review scene frames to understand visual content of each scene",
-            "3. Use 'suggested_cut_points' for clean audio transitions",
-            "4. Trim clips at scene boundaries or suggested cut points",
-            "5. Use 'crossfade' transition in concat for smooth audio between clips",
-            "6. Apply 'fade' (fade_in/fade_out) for polished opening and closing",
-            "7. Execute via EDL for multi-step edits with $N references",
+            "3. Run 'beats' to detect musical beats for rhythm-aligned cuts",
+            "4. Use 'suggested_cut_points' and beat timestamps for clean transitions",
+            "5. Trim clips at scene boundaries or suggested cut points",
+            "6. Use 'normalize' to even out loudness across clips before concatenation",
+            "7. Use 'mix_audio' to layer background music at a subtle level (mix_level 0.1–0.2)",
+            "8. Use 'crossfade' transition in concat for smooth audio between clips",
+            "9. Apply 'fade' (fade_in/fade_out) for polished opening and closing",
+            "10. Execute via EDL for multi-step edits with $N references",
         ],
         "progress_output": {
             "description": "During 'execute', progress is emitted as JSONL on stderr",
@@ -136,10 +178,14 @@ def cmd_capabilities(_args) -> int:
             "crossfade and fade require re-encoding (codec must not be 'copy')",
             "Use 'libx264' codec when transitions or fades are needed",
             "Scene frames at 10/50/90% offsets give a filmstrip of each scene",
-            "Only 3 operations need re-encoding: fade, crossfade concat, and speed",
+            "Operations needing re-encode: fade, crossfade concat, speed, mix_audio, normalize",
             "Use 'speed' with factor <1 for slow-motion, >1 for fast-forward",
             "Use $input.0 in operations to reference the first input file",
             "Use --edl-json to pass EDL inline without writing a temp file",
+            "Use 'normalize' (target_lufs=-16) before concat to ensure consistent loudness",
+            "Use 'mix_audio' with mix_level 0.1–0.2 for subtle background music",
+            "Use 'beats' to detect rhythm — cut on beats for music-driven edits",
+            "Use 'volume' to boost quiet clips or reduce loud ones (gain_db in dB)",
         ],
     }
     return _json_out(caps)
@@ -393,6 +439,82 @@ def cmd_extract(args) -> int:
         return _json_error(exc)
 
 
+def cmd_mix(args) -> int:
+    """Mix an audio track into a video."""
+    from cutagent.audio_ops import mix_audio
+    try:
+        result = mix_audio(
+            args.file, args.audio, args.output,
+            mix_level=args.mix_level,
+            codec=args.codec,
+        )
+        return _json_out(result.to_dict())
+    except CutAgentError as exc:
+        return _json_error(exc)
+
+
+def cmd_volume(args) -> int:
+    """Adjust audio volume."""
+    from cutagent.audio_ops import adjust_volume
+    try:
+        result = adjust_volume(
+            args.file, args.output,
+            gain_db=args.gain_db,
+            codec=args.codec,
+        )
+        return _json_out(result.to_dict())
+    except CutAgentError as exc:
+        return _json_error(exc)
+
+
+def cmd_replace_audio(args) -> int:
+    """Replace a video's audio track."""
+    from cutagent.audio_ops import replace_audio
+    try:
+        result = replace_audio(
+            args.file, args.audio, args.output,
+            codec=args.codec,
+        )
+        return _json_out(result.to_dict())
+    except CutAgentError as exc:
+        return _json_error(exc)
+
+
+def cmd_normalize(args) -> int:
+    """Normalize audio loudness (EBU R128)."""
+    from cutagent.audio_ops import normalize_audio
+    try:
+        result = normalize_audio(
+            args.file, args.output,
+            target_lufs=args.target_lufs,
+            true_peak_dbtp=args.true_peak_dbtp,
+            codec=args.codec,
+        )
+        return _json_out(result.to_dict())
+    except CutAgentError as exc:
+        return _json_error(exc)
+
+
+def cmd_beats(args) -> int:
+    """Detect musical beats/onsets in audio."""
+    from cutagent.probe import detect_beats
+    try:
+        result = detect_beats(
+            args.file,
+            min_interval=args.min_interval,
+            energy_threshold=args.energy_threshold,
+        )
+        beats_list = [b.to_dict() for b in result["beats"]]
+        return _json_out({
+            "path": args.file,
+            "beats": beats_list,
+            "count": result["count"],
+            "bpm": result["bpm"],
+        })
+    except CutAgentError as exc:
+        return _json_error(exc, EXIT_EXECUTION)
+
+
 def _read_edl_input(edl_arg: str | None = None, edl_json: str | None = None) -> str:
     """Read EDL from inline JSON, stdin (if '-'), or from a file path.
 
@@ -581,6 +703,48 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--stream", required=True, choices=["audio", "video"], help="Stream to extract")
     p.add_argument("-o", "--output", required=True, help="Output file path")
 
+    # mix (audio overlay)
+    p = sub.add_parser("mix", help="Mix an audio track into a video")
+    p.add_argument("file", help="Path to the source video")
+    p.add_argument("--audio", required=True, help="Path to the audio file to mix in")
+    p.add_argument("-o", "--output", required=True, help="Output file path")
+    p.add_argument("--mix-level", type=float, default=0.3,
+                   help="Volume weight for the mixed audio (0.0–1.0, default 0.3)")
+    p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
+
+    # volume
+    p = sub.add_parser("volume", help="Adjust audio volume")
+    p.add_argument("file", help="Path to the source file")
+    p.add_argument("-o", "--output", required=True, help="Output file path")
+    p.add_argument("--gain-db", type=float, required=True,
+                   help="Gain in dB (positive = louder, negative = quieter)")
+    p.add_argument("--codec", default="copy", help="Video codec (default: copy)")
+
+    # replace-audio
+    p = sub.add_parser("replace-audio", help="Replace a video's audio track")
+    p.add_argument("file", help="Path to the source video")
+    p.add_argument("--audio", required=True, help="Path to the replacement audio file")
+    p.add_argument("-o", "--output", required=True, help="Output file path")
+    p.add_argument("--codec", default="copy", help="Video codec (default: copy)")
+
+    # normalize
+    p = sub.add_parser("normalize", help="Normalize audio loudness (EBU R128)")
+    p.add_argument("file", help="Path to the source file")
+    p.add_argument("-o", "--output", required=True, help="Output file path")
+    p.add_argument("--target-lufs", type=float, default=-16.0,
+                   help="Target integrated loudness in LUFS (default: -16.0)")
+    p.add_argument("--true-peak-dbtp", type=float, default=-1.5,
+                   help="Maximum true peak in dBTP (default: -1.5)")
+    p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
+
+    # beats
+    p = sub.add_parser("beats", help="Detect musical beats/onsets in audio")
+    p.add_argument("file", help="Path to the source media")
+    p.add_argument("--min-interval", type=float, default=0.15,
+                   help="Minimum seconds between beats (default: 0.15)")
+    p.add_argument("--energy-threshold", type=float, default=1.4,
+                   help="Energy spike threshold multiplier (default: 1.4)")
+
     # validate
     p = sub.add_parser("validate", help="Validate an EDL (dry-run)")
     p.add_argument("edl", nargs="?", default=None,
@@ -618,6 +782,7 @@ def main() -> None:
         "thumbnail": cmd_thumbnail,
         "silence": cmd_silence,
         "audio-levels": cmd_audio_levels,
+        "beats": cmd_beats,
         "summarize": cmd_summarize,
         "trim": cmd_trim,
         "split": cmd_split,
@@ -625,6 +790,10 @@ def main() -> None:
         "fade": cmd_fade,
         "speed": cmd_speed,
         "extract": cmd_extract,
+        "mix": cmd_mix,
+        "volume": cmd_volume,
+        "replace-audio": cmd_replace_audio,
+        "normalize": cmd_normalize,
         "validate": cmd_validate,
         "execute": cmd_execute,
     }

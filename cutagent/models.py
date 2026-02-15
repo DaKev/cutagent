@@ -222,6 +222,23 @@ class AudioLevel:
 
 
 @dataclass
+class BeatInfo:
+    """A detected musical beat/onset in an audio track."""
+    timestamp: float
+    strength: float
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> BeatInfo:
+        return cls(
+            timestamp=float(data["timestamp"]),
+            strength=float(data["strength"]),
+        )
+
+
+@dataclass
 class VideoSummary:
     """Unified, agent-friendly map of content and suggested cut points."""
     path: str
@@ -380,6 +397,82 @@ class SpeedOp:
         )
 
 
+@dataclass
+class MixAudioOp:
+    """Mix an external audio track into a video's existing audio."""
+    source: str
+    audio: str
+    mix_level: float = 0.3
+    op: str = "mix_audio"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> MixAudioOp:
+        return cls(
+            source=data["source"],
+            audio=data["audio"],
+            mix_level=float(data.get("mix_level", 0.3)),
+        )
+
+
+@dataclass
+class VolumeOp:
+    """Adjust audio volume by a gain value in dB."""
+    source: str
+    gain_db: float = 0.0
+    op: str = "volume"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> VolumeOp:
+        return cls(
+            source=data["source"],
+            gain_db=float(data.get("gain_db", 0.0)),
+        )
+
+
+@dataclass
+class ReplaceAudioOp:
+    """Replace a video's audio track with an external audio file."""
+    source: str
+    audio: str
+    op: str = "replace_audio"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> ReplaceAudioOp:
+        return cls(
+            source=data["source"],
+            audio=data["audio"],
+        )
+
+
+@dataclass
+class NormalizeOp:
+    """Normalize audio loudness using EBU R128 loudnorm."""
+    source: str
+    target_lufs: float = -16.0
+    true_peak_dbtp: float = -1.5
+    op: str = "normalize"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> NormalizeOp:
+        return cls(
+            source=data["source"],
+            target_lufs=float(data.get("target_lufs", -16.0)),
+            true_peak_dbtp=float(data.get("true_peak_dbtp", -1.5)),
+        )
+
+
 # Registry for parsing operation dicts into typed objects
 OPERATION_TYPES: dict[str, type] = {
     "trim": TrimOp,
@@ -389,6 +482,10 @@ OPERATION_TYPES: dict[str, type] = {
     "extract": ExtractOp,
     "fade": FadeOp,
     "speed": SpeedOp,
+    "mix_audio": MixAudioOp,
+    "volume": VolumeOp,
+    "replace_audio": ReplaceAudioOp,
+    "normalize": NormalizeOp,
 }
 
 

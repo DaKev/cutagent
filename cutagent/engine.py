@@ -23,10 +23,15 @@ from cutagent.models import (
     ExtractOp,
     FadeOp,
     SpeedOp,
+    MixAudioOp,
+    VolumeOp,
+    ReplaceAudioOp,
+    NormalizeOp,
     OperationResult,
     OutputSpec,
 )
 from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
+from cutagent.audio_ops import mix_audio, adjust_volume, replace_audio, normalize_audio
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +285,47 @@ def _execute_operation(
             codec=codec if codec != "copy" else "libx264",
         )
 
+    if isinstance(op, MixAudioOp):
+        source = _resolve_source(op.source, results, inputs)
+        audio = _resolve_source(op.audio, results, inputs)
+        ext = Path(source).suffix or ext
+        out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
+        return mix_audio(
+            source, audio, out,
+            mix_level=op.mix_level,
+            codec=codec if codec != "copy" else "libx264",
+        )
+
+    if isinstance(op, VolumeOp):
+        source = _resolve_source(op.source, results, inputs)
+        ext = Path(source).suffix or ext
+        out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
+        return adjust_volume(
+            source, out,
+            gain_db=op.gain_db,
+            codec=codec,
+        )
+
+    if isinstance(op, ReplaceAudioOp):
+        source = _resolve_source(op.source, results, inputs)
+        audio = _resolve_source(op.audio, results, inputs)
+        ext = Path(source).suffix or ext
+        out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
+        return replace_audio(source, audio, out, codec=codec)
+
+    if isinstance(op, NormalizeOp):
+        source = _resolve_source(op.source, results, inputs)
+        ext = Path(source).suffix or ext
+        out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
+        return normalize_audio(
+            source, out,
+            target_lufs=op.target_lufs,
+            true_peak_dbtp=op.true_peak_dbtp,
+            codec=codec if codec != "copy" else "libx264",
+        )
+
     raise CutAgentError(
         code=INVALID_EDL,
         message=f"Unsupported operation at index {idx}: {type(op).__name__}",
-        recovery=["Use one of: trim, split, concat, reorder, extract, fade, speed"],
+        recovery=["Use one of: trim, split, concat, reorder, extract, fade, speed, mix_audio, volume, replace_audio, normalize"],
     )

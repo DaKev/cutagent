@@ -3,8 +3,10 @@
 Public API:
     probe, keyframes, detect_scenes, find_nearest_keyframe  — introspection
     extract_frames, thumbnail, detect_silence, audio_levels — content probes
+    detect_beats                                            — music beat detection
     summarize                                                — unified content map
-    trim, split, concat, reorder, extract_stream, fade, speed — operations
+    trim, split, concat, reorder, extract_stream, fade, speed — video operations
+    mix_audio, adjust_volume, replace_audio, normalize_audio  — audio operations
     parse_edl, execute_edl                                  — EDL engine
     validate_edl                                            — dry-run validation
     CutAgentError                                           — structured errors
@@ -19,9 +21,11 @@ from cutagent.probe import (
     thumbnail,
     detect_silence,
     audio_levels,
+    detect_beats,
     summarize,
 )
 from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
+from cutagent.audio_ops import mix_audio, adjust_volume, replace_audio, normalize_audio
 from cutagent.engine import parse_edl, execute_edl
 from cutagent.validation import validate_edl
 from cutagent.errors import CutAgentError
@@ -31,8 +35,13 @@ from cutagent.models import (
     SceneInfo,
     SilenceInterval,
     AudioLevel,
+    BeatInfo,
     VideoSummary,
     SpeedOp,
+    MixAudioOp,
+    VolumeOp,
+    ReplaceAudioOp,
+    NormalizeOp,
     OperationResult,
     EDL,
 )
@@ -49,8 +58,9 @@ __all__ = [
     "thumbnail",
     "detect_silence",
     "audio_levels",
+    "detect_beats",
     "summarize",
-    # Operations
+    # Video operations
     "trim",
     "split",
     "concat",
@@ -58,6 +68,11 @@ __all__ = [
     "extract_stream",
     "fade",
     "speed",
+    # Audio operations
+    "mix_audio",
+    "adjust_volume",
+    "replace_audio",
+    "normalize_audio",
     # EDL engine
     "parse_edl",
     "execute_edl",
@@ -69,8 +84,13 @@ __all__ = [
     "SceneInfo",
     "SilenceInterval",
     "AudioLevel",
+    "BeatInfo",
     "VideoSummary",
     "SpeedOp",
+    "MixAudioOp",
+    "VolumeOp",
+    "ReplaceAudioOp",
+    "NormalizeOp",
     "OperationResult",
     "EDL",
     "CutAgentError",

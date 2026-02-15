@@ -15,6 +15,7 @@ from cutagent.errors import (
 from cutagent.ffmpeg import run_ffmpeg, run_ffprobe, run_ffprobe_json
 from cutagent.models import (
     AudioLevel,
+    BeatInfo,
     FrameResult,
     ProbeResult,
     SceneInfo,
@@ -460,3 +461,66 @@ def find_nearest_keyframe(path: str | Path, target: float) -> float:
     if not kfs:
         return target
     return min(kfs, key=lambda kf: abs(kf - target))
+
+
+def detect_beats(
+    path: str | Path,
+    min_interval: float = 0.15,
+    energy_threshold: float = 1.4,
+    window_size: int = 8,
+) -> dict:
+    """Detect musical beats/onsets by analysing audio energy spikes.
+
+    Uses fine-grained (20ms) audio RMS levels and detects frames where the
+    energy exceeds a moving-average by *energy_threshold* times.
+
+    Args:
+        path: Path to the media file.
+        min_interval: Minimum seconds between reported beats.
+        energy_threshold: Spike must be this many times the local average.
+        window_size: Number of preceding samples for the moving average.
+
+    Returns:
+        Dict with 'beats' (list of BeatInfo), 'count', and 'bpm' estimate.
+    """
+    p = _check_input(path)
+    levels = audio_levels(p, interval=0.02)
+
+    if not levels:
+        return {"beats": [], "count": 0, "bpm": None}
+
+    # Convert dB to linear energy for spike detection
+    energies = []
+    for lv in levels:
+        linear = 10 ** (lv.rms_db / 20.0) if lv.rms_db > -100 else 0.0
+        energies.append(linear)
+
+    beats: list[BeatInfo] = []
+    last_beat_ts = -min_interval
+
+    for i in range(window_size, len(energies)):
+        window_avg = sum(energies[i - window_size : i]) / window_size
+        if window_avg <= 0:
+            continue
+
+        ratio = energies[i] / window_avg
+        ts = levels[i].timestamp
+
+        if ratio >= energy_threshold and (ts - last_beat_ts) >= min_interval:
+            strength = round(min(ratio / energy_threshold, 3.0), 3)
+            beats.append(BeatInfo(timestamp=round(ts, 3), strength=strength))
+            last_beat_ts = ts
+
+    # Estimate BPM from median inter-beat interval
+    bpm: float | None = None
+    if len(beats) >= 2:
+        intervals = [
+            beats[i + 1].timestamp - beats[i].timestamp
+            for i in range(len(beats) - 1)
+        ]
+        intervals.sort()
+        median_interval = intervals[len(intervals) // 2]
+        if median_interval > 0:
+            bpm = round(60.0 / median_interval, 1)
+
+    return {"beats": beats, "count": len(beats), "bpm": bpm}
