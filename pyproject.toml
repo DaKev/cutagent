@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cutagent"
+version = "0.1.0"
+description = "Agent-first video cutting library — declarative JSON edits powered by FFmpeg"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["video", "editing", "ffmpeg", "ai", "agent", "cli", "edl"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Video :: Non-Linear Editor",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+authors = [{name = "Kevin Koch"}]
+
+[project.urls]
+Homepage = "https://github.com/DaKev/cutagent"
+Repository = "https://github.com/DaKev/cutagent"
+Issues = "https://github.com/DaKev/cutagent/issues"
+Changelog = "https://github.com/DaKev/cutagent/blob/main/CHANGELOG.md"
+
+[project.scripts]
+cutagent = "cutagent.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+include = ["cutagent*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
