@@ -14,6 +14,7 @@ from cutagent.models import (
     ReorderOp,
     ExtractOp,
     FadeOp,
+    SpeedOp,
     parse_time,
 )
 from cutagent.probe import probe
@@ -129,6 +130,8 @@ def _validate_operation(
         _validate_extract(op, idx, produced, result)
     elif isinstance(op, FadeOp):
         _validate_fade(op, idx, produced, file_durations, result)
+    elif isinstance(op, SpeedOp):
+        _validate_speed(op, idx, produced, result)
 
 
 def _validate_source(source: str, produced: set[int], result: ValidationResult) -> None:
@@ -242,4 +245,18 @@ def _validate_fade(op: FadeOp, idx: int, produced: set[int], durations: dict, re
                 f"Op {idx}: fade durations ({op.fade_in + op.fade_out:.3f}s) exceed "
                 f"duration ({dur:.3f}s)"
             ),
+        )
+
+
+def _validate_speed(op: SpeedOp, idx: int, produced: set[int], result: ValidationResult) -> None:
+    _validate_source(op.source, produced, result)
+    if op.factor <= 0:
+        result.add_error(
+            "INVALID_SPEED_FACTOR",
+            f"Op {idx}: speed factor must be > 0, got {op.factor}",
+        )
+    elif op.factor < 0.25 or op.factor > 100.0:
+        result.add_error(
+            "INVALID_SPEED_FACTOR",
+            f"Op {idx}: speed factor must be between 0.25 and 100.0, got {op.factor}",
         )

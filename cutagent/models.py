@@ -149,17 +149,27 @@ class FrameResult:
 
 @dataclass
 class SceneInfo:
-    """A contiguous scene interval with optional representative frame."""
+    """A contiguous scene interval with optional representative frames."""
     start: float
     end: float
     duration: float
-    frame: Optional[str] = None
-    has_speech: Optional[bool] = None
+    frames: list[str] = field(default_factory=list)
+    has_audio: Optional[bool] = None
     avg_loudness: Optional[float] = None
 
     def to_dict(self) -> dict:
-        d = asdict(self)
-        return {k: v for k, v in d.items() if v is not None}
+        d: dict = {
+            "start": self.start,
+            "end": self.end,
+            "duration": self.duration,
+        }
+        if self.frames:
+            d["frames"] = self.frames
+        if self.has_audio is not None:
+            d["has_audio"] = self.has_audio
+        if self.avg_loudness is not None:
+            d["avg_loudness"] = self.avg_loudness
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> SceneInfo:
@@ -167,8 +177,8 @@ class SceneInfo:
             start=float(data["start"]),
             end=float(data["end"]),
             duration=float(data["duration"]),
-            frame=data.get("frame"),
-            has_speech=data.get("has_speech"),
+            frames=data.get("frames", []),
+            has_audio=data.get("has_audio"),
             avg_loudness=data.get("avg_loudness"),
         )
 
@@ -353,6 +363,23 @@ class FadeOp:
         )
 
 
+@dataclass
+class SpeedOp:
+    source: str
+    factor: float = 1.0
+    op: str = "speed"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> SpeedOp:
+        return cls(
+            source=data["source"],
+            factor=float(data.get("factor", 1.0)),
+        )
+
+
 # Registry for parsing operation dicts into typed objects
 OPERATION_TYPES: dict[str, type] = {
     "trim": TrimOp,
@@ -361,6 +388,7 @@ OPERATION_TYPES: dict[str, type] = {
     "reorder": ReorderOp,
     "extract": ExtractOp,
     "fade": FadeOp,
+    "speed": SpeedOp,
 }
 
 

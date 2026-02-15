@@ -68,6 +68,14 @@ def cmd_capabilities(_args) -> int:
                 },
                 "supports_copy_codec": False,
             },
+            "speed": {
+                "description": "Change playback speed (slow-motion or speed-up)",
+                "params": {
+                    "source": "str",
+                    "factor": "float (0.25–100.0; >1 = faster, <1 = slower)",
+                },
+                "supports_copy_codec": False,
+            },
         },
         "time_formats": ["HH:MM:SS", "HH:MM:SS.mmm", "MM:SS", "seconds"],
         "edl_format": {
@@ -87,6 +95,22 @@ def cmd_capabilities(_args) -> int:
             "summarize",
         ],
         "exit_codes": {"0": "success", "1": "validation_error", "2": "execution_error", "3": "system_error"},
+        "agent_workflow": [
+            "1. Run 'summarize' with --frame-dir to get content map and scene preview frames",
+            "2. Review scene frames to understand visual content of each scene",
+            "3. Use 'suggested_cut_points' for clean audio transitions",
+            "4. Trim clips at scene boundaries or suggested cut points",
+            "5. Use 'crossfade' transition in concat for smooth audio between clips",
+            "6. Apply 'fade' (fade_in/fade_out) for polished opening and closing",
+            "7. Execute via EDL for multi-step edits with $N references",
+        ],
+        "tips": [
+            "crossfade and fade require re-encoding (codec must not be 'copy')",
+            "Use 'libx264' codec when transitions or fades are needed",
+            "Scene frames at 10/50/90% offsets give a filmstrip of each scene",
+            "Only 3 operations need re-encoding: fade, crossfade concat, and speed",
+            "Use 'speed' with factor <1 for slow-motion, >1 for fast-forward",
+        ],
     }
     return _json_out(caps)
 
@@ -230,6 +254,7 @@ def cmd_summarize(args) -> int:
             silence_threshold=args.silence_threshold,
             min_silence_duration=args.min_silence_duration,
             audio_interval=args.audio_interval,
+            include_audio_levels=args.include_audio_levels,
         )
         return _json_out({"summary": result.to_dict()})
     except CutAgentError as exc:
@@ -306,6 +331,28 @@ def cmd_fade(args) -> int:
         }, EXIT_VALIDATION)
 
 
+def cmd_speed(args) -> int:
+    """Change playback speed of a video."""
+    from cutagent.operations import speed
+    try:
+        result = speed(
+            args.file,
+            args.output,
+            factor=args.factor,
+            codec=args.codec,
+        )
+        return _json_out(result.to_dict())
+    except CutAgentError as exc:
+        return _json_error(exc)
+    except ValueError as exc:
+        return _json_out({
+            "error": True,
+            "code": "INVALID_ARGUMENT",
+            "message": str(exc),
+            "recovery": ["Use --factor between 0.25 and 100.0"],
+        }, EXIT_VALIDATION)
+
+
 def cmd_extract(args) -> int:
     """Extract audio or video stream."""
     from cutagent.operations import extract_stream
@@ -316,11 +363,21 @@ def cmd_extract(args) -> int:
         return _json_error(exc)
 
 
+def _read_edl_input(edl_arg: str) -> str:
+    """Read EDL from stdin (if '-') or from a file path."""
+    if edl_arg == "-":
+        return sys.stdin.read()
+    try:
+        return Path(edl_arg).read_text()
+    except FileNotFoundError:
+        raise FileNotFoundError(f"EDL file not found: {edl_arg}")
+
+
 def cmd_validate(args) -> int:
     """Validate an EDL without executing."""
     from cutagent.validation import validate_edl
     try:
-        edl_text = Path(args.edl).read_text()
+        edl_text = _read_edl_input(args.edl)
         result = validate_edl(edl_text)
         code = EXIT_SUCCESS if result.valid else EXIT_VALIDATION
         return _json_out(result.to_dict(), code)
@@ -330,7 +387,7 @@ def cmd_validate(args) -> int:
         return _json_out({
             "error": True, "code": "INPUT_NOT_FOUND",
             "message": f"EDL file not found: {args.edl}",
-            "recovery": ["Check the file path"],
+            "recovery": ["Check the file path, or use '-' to read from stdin"],
         }, EXIT_VALIDATION)
 
 
@@ -338,7 +395,7 @@ def cmd_execute(args) -> int:
     """Execute an EDL."""
     from cutagent.engine import execute_edl
     try:
-        edl_text = Path(args.edl).read_text()
+        edl_text = _read_edl_input(args.edl)
         result = execute_edl(edl_text)
         return _json_out(result.to_dict())
     except CutAgentError as exc:
@@ -347,7 +404,7 @@ def cmd_execute(args) -> int:
         return _json_out({
             "error": True, "code": "INPUT_NOT_FOUND",
             "message": f"EDL file not found: {args.edl}",
-            "recovery": ["Check the file path"],
+            "recovery": ["Check the file path, or use '-' to read from stdin"],
         }, EXIT_VALIDATION)
 
 
@@ -412,6 +469,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--silence-threshold", type=float, default=-30.0, help="Silence threshold in dB")
     p.add_argument("--min-silence-duration", type=float, default=0.5, help="Minimum silence duration")
     p.add_argument("--audio-interval", type=float, default=1.0, help="Audio level interval in seconds")
+    p.add_argument("--include-audio-levels", action="store_true", default=False,
+                   help="Include per-second audio levels in output (verbose)")
 
     # trim
     p = sub.add_parser("trim", help="Trim a video segment")
@@ -444,6 +503,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fade-out", type=float, default=0.0, help="Fade-out duration in seconds")
     p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
 
+    # speed
+    p = sub.add_parser("speed", help="Change playback speed")
+    p.add_argument("file", help="Path to the source video")
+    p.add_argument("-o", "--output", required=True, help="Output file path")
+    p.add_argument("--factor", type=float, required=True, help="Speed factor (>1 faster, <1 slower)")
+    p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
+
     # extract
     p = sub.add_parser("extract", help="Extract audio or video stream")
     p.add_argument("file", help="Path to the source file")
@@ -452,11 +518,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # validate
     p = sub.add_parser("validate", help="Validate an EDL (dry-run)")
-    p.add_argument("edl", help="Path to the EDL JSON file")
+    p.add_argument("edl", help="Path to the EDL JSON file (or '-' for stdin)")
 
     # execute
     p = sub.add_parser("execute", help="Execute an EDL")
-    p.add_argument("edl", help="Path to the EDL JSON file")
+    p.add_argument("edl", help="Path to the EDL JSON file (or '-' for stdin)")
 
     return parser
 
@@ -484,6 +550,7 @@ def main() -> None:
         "split": cmd_split,
         "concat": cmd_concat,
         "fade": cmd_fade,
+        "speed": cmd_speed,
         "extract": cmd_extract,
         "validate": cmd_validate,
         "execute": cmd_execute,

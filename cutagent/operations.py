@@ -375,6 +375,62 @@ def extract_stream(
 # Fade
 # ---------------------------------------------------------------------------
 
+def speed(
+    source: str,
+    output: str,
+    factor: float = 1.0,
+    codec: str = "libx264",
+) -> OperationResult:
+    """Change playback speed. factor=2.0 is 2x faster, 0.5 is half speed.
+
+    Args:
+        source: Path to the source video.
+        output: Path for the output file.
+        factor: Speed multiplier (0.25–100.0). >1 = faster, <1 = slower.
+        codec: Video codec (default libx264). Cannot use 'copy'.
+
+    Returns:
+        OperationResult with output path.
+    """
+    if factor <= 0:
+        raise ValueError("factor must be > 0")
+    if factor < 0.25 or factor > 100.0:
+        raise ValueError("factor must be between 0.25 and 100.0")
+
+    info = probe_file(source)
+
+    # Video: setpts=PTS/factor  (faster → smaller PTS → divide by >1)
+    video_filter = f"setpts=PTS/{factor}"
+
+    # Audio: atempo supports 0.5–100.0, so chain filters for <0.5
+    audio_filters = _build_atempo_chain(factor)
+
+    args = ["-i", source, "-vf", video_filter, "-af", audio_filters]
+    args += ["-c:v", codec, "-c:a", "aac", output]
+
+    run_ffmpeg(args)
+    new_duration = info.duration / factor
+    return OperationResult(success=True, output_path=output, duration_seconds=new_duration)
+
+
+def _build_atempo_chain(factor: float) -> str:
+    """Build chained atempo filters for factors outside the 0.5–2.0 range.
+
+    FFmpeg atempo supports 0.5–100.0 natively. For factors <0.5, we chain
+    multiple atempo filters (each at 0.5) to reach the target.
+    """
+    if factor >= 0.5:
+        return f"atempo={factor}"
+    # Chain multiple atempo=0.5 filters
+    parts: list[str] = []
+    remaining = factor
+    while remaining < 0.5:
+        parts.append("atempo=0.5")
+        remaining /= 0.5
+    parts.append(f"atempo={remaining}")
+    return ",".join(parts)
+
+
 def fade(
     source: str,
     output: str,

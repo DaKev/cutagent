@@ -74,8 +74,10 @@ class TestSceneDetection:
     def test_scene_frame_output(self, test_video, output_dir):
         scenes = detect_scenes(test_video, threshold=0.3, frame_output_dir=output_dir)
         assert len(scenes) >= 1
-        assert scenes[0].frame is not None
-        assert os.path.exists(scenes[0].frame)
+        # Each scene should have up to 3 frames (at 10%, 50%, 90% offsets)
+        assert len(scenes[0].frames) == 3
+        for frame_path in scenes[0].frames:
+            assert os.path.exists(frame_path)
 
     def test_file_not_found(self):
         with pytest.raises(CutAgentError):
@@ -131,4 +133,12 @@ class TestSummary:
         assert len(result.scenes) >= 1
         assert len(result.silences) >= 1
         assert len(result.suggested_cut_points) >= 1
-        assert result.scenes[0].frame is not None
+        assert len(result.scenes[0].frames) >= 1
+
+    def test_summarize_excludes_audio_levels_by_default(self, test_video_with_silence):
+        result = summarize(test_video_with_silence)
+        assert result.audio_levels == []
+
+    def test_summarize_includes_audio_levels_when_requested(self, test_video_with_silence):
+        result = summarize(test_video_with_silence, include_audio_levels=True)
+        assert len(result.audio_levels) >= 1

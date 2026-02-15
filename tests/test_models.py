@@ -17,6 +17,7 @@ from cutagent.models import (
     ReorderOp,
     ExtractOp,
     FadeOp,
+    SpeedOp,
     EDL,
     OutputSpec,
     OperationResult,
@@ -154,10 +155,23 @@ class TestOperations:
         op = parse_operation(d)
         assert isinstance(op, TrimOp)
 
+    def test_speed_round_trip(self):
+        op = SpeedOp(source="test.mp4", factor=2.0)
+        d = op.to_dict()
+        assert d["op"] == "speed"
+        op2 = SpeedOp.from_dict(d)
+        assert op2.factor == 2.0
+
     def test_parse_fade_operation(self):
         d = {"op": "fade", "source": "test.mp4", "fade_in": 0.25, "fade_out": 0.25}
         op = parse_operation(d)
         assert isinstance(op, FadeOp)
+
+    def test_parse_speed_operation(self):
+        d = {"op": "speed", "source": "test.mp4", "factor": 0.5}
+        op = parse_operation(d)
+        assert isinstance(op, SpeedOp)
+        assert op.factor == 0.5
 
     def test_parse_unknown_op(self):
         with pytest.raises(ValueError, match="Unknown operation"):
@@ -214,11 +228,12 @@ class TestContentModels:
         assert parsed.width == 640
 
     def test_scene_info_round_trip(self):
-        scene = SceneInfo(start=0.0, end=2.5, duration=2.5, frame="scene.jpg", has_speech=True, avg_loudness=-18.2)
+        scene = SceneInfo(start=0.0, end=2.5, duration=2.5, frames=["a.jpg", "b.jpg"], has_audio=True, avg_loudness=-18.2)
         data = scene.to_dict()
         parsed = SceneInfo.from_dict(data)
         assert parsed.end == 2.5
-        assert parsed.has_speech is True
+        assert parsed.has_audio is True
+        assert parsed.frames == ["a.jpg", "b.jpg"]
 
     def test_silence_interval_round_trip(self):
         silence = SilenceInterval(start=1.0, end=1.5, duration=0.5)

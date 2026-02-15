@@ -4,7 +4,7 @@ Public API:
     probe, keyframes, detect_scenes, find_nearest_keyframe  — introspection
     extract_frames, thumbnail, detect_silence, audio_levels — content probes
     summarize                                                — unified content map
-    trim, split, concat, reorder, extract_stream, fade      — operations
+    trim, split, concat, reorder, extract_stream, fade, speed — operations
     parse_edl, execute_edl                                  — EDL engine
     validate_edl                                            — dry-run validation
     CutAgentError                                           — structured errors
@@ -21,7 +21,7 @@ from cutagent.probe import (
     audio_levels,
     summarize,
 )
-from cutagent.operations import trim, split, concat, reorder, extract_stream, fade
+from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
 from cutagent.engine import parse_edl, execute_edl
 from cutagent.validation import validate_edl
 from cutagent.errors import CutAgentError
@@ -32,6 +32,7 @@ from cutagent.models import (
     SilenceInterval,
     AudioLevel,
     VideoSummary,
+    SpeedOp,
     OperationResult,
     EDL,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "reorder",
     "extract_stream",
     "fade",
+    "speed",
     # EDL engine
     "parse_edl",
     "execute_edl",
@@ -68,6 +70,7 @@ __all__ = [
     "SilenceInterval",
     "AudioLevel",
     "VideoSummary",
+    "SpeedOp",
     "OperationResult",
     "EDL",
     "CutAgentError",

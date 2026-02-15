@@ -264,15 +264,23 @@ def detect_scenes(
         scenes.append(SceneInfo(start=start, end=end, duration=end - start))
 
     if frame_output_dir and scenes:
+        # Extract 3 frames per scene at 10%, 50%, 90% offsets for a filmstrip
+        timestamps: list[float] = []
+        scene_indices: list[int] = []
+        for i, scene in enumerate(scenes):
+            for pct in (0.1, 0.5, 0.9):
+                timestamps.append(scene.start + scene.duration * pct)
+                scene_indices.append(i)
+
         scene_frames = extract_frames(
             p,
-            [scene.start for scene in scenes],
+            timestamps,
             frame_output_dir,
             image_format="jpg",
             prefix="scene",
         )
-        for scene, frame in zip(scenes, scene_frames):
-            scene.frame = frame.path
+        for frame, scene_idx in zip(scene_frames, scene_indices):
+            scenes[scene_idx].frames.append(frame.path)
 
     return scenes
 
@@ -386,8 +394,14 @@ def summarize(
     silence_threshold: float = -30.0,
     min_silence_duration: float = 0.5,
     audio_interval: float = 1.0,
+    include_audio_levels: bool = False,
 ) -> VideoSummary:
-    """Build a unified content map for a media file."""
+    """Build a unified content map for a media file.
+
+    Args:
+        include_audio_levels: If True, include per-second audio levels in the
+            output. Default False — per-scene avg_loudness is always computed.
+    """
     info = probe(path)
     scenes = detect_scenes(path, threshold=scene_threshold, frame_output_dir=frame_dir)
     silences = detect_silence(path, threshold=silence_threshold, min_duration=min_silence_duration)
@@ -407,9 +421,9 @@ def summarize(
 
         if scene.duration > 0:
             non_silent_ratio = max(0.0, 1.0 - (silence_overlap / scene.duration))
-            scene.has_speech = non_silent_ratio > 0.25
+            scene.has_audio = non_silent_ratio > 0.25
         else:
-            scene.has_speech = False
+            scene.has_audio = False
 
     silence_points = sorted({round(s.start, 3) for s in silences})
     scene_starts = {round(scene.start, 3) for scene in scenes}
@@ -426,7 +440,7 @@ def summarize(
         resolution=resolution,
         scenes=scenes,
         silences=silences,
-        audio_levels=levels,
+        audio_levels=levels if include_audio_levels else [],
         silence_points=silence_points,
         suggested_cut_points=suggested,
     )

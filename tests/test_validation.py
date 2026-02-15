@@ -225,3 +225,43 @@ class TestValidateEDL:
         assert not result.valid
         codes = [e["code"] for e in result.errors]
         assert "INVALID_FADE_DURATION" in codes
+
+    def test_valid_speed(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "speed", "source": test_video, "factor": 2.0},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+
+    def test_invalid_speed_factor_zero(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "speed", "source": test_video, "factor": 0.0},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_SPEED_FACTOR" in codes
+
+    def test_invalid_speed_factor_out_of_range(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "speed", "source": test_video, "factor": 0.1},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_SPEED_FACTOR" in codes

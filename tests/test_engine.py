@@ -152,3 +152,17 @@ class TestExecuteEDL:
         result = execute_edl(edl)
         assert result.success
         assert os.path.exists(out)
+
+    def test_speed_operation(self, test_video, output_dir):
+        out = os.path.join(output_dir, "sped_up.mp4")
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "speed", "source": test_video, "factor": 2.0},
+            ],
+            "output": {"path": out, "codec": "libx264"},
+        }
+        result = execute_edl(edl)
+        assert result.success
+        assert os.path.exists(out)

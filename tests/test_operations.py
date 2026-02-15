@@ -3,7 +3,7 @@
 import os
 
 import pytest
-from cutagent.operations import trim, split, concat, reorder, extract_stream, fade
+from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
 from cutagent.errors import CutAgentError
 
 
@@ -142,3 +142,29 @@ class TestFade:
         out = os.path.join(output_dir, "bad_fade.mp4")
         with pytest.raises(ValueError):
             fade(test_video, out, fade_in=0.0, fade_out=0.0)
+
+
+class TestSpeed:
+    def test_speed_up(self, test_video, output_dir):
+        out = os.path.join(output_dir, "fast.mp4")
+        result = speed(test_video, out, factor=2.0)
+        assert result.success
+        assert os.path.exists(out)
+        assert result.duration_seconds == pytest.approx(2.5, abs=0.5)
+
+    def test_slow_down(self, test_video, output_dir):
+        out = os.path.join(output_dir, "slow.mp4")
+        result = speed(test_video, out, factor=0.5)
+        assert result.success
+        assert os.path.exists(out)
+        assert result.duration_seconds == pytest.approx(10.0, abs=1.0)
+
+    def test_speed_invalid_zero(self, test_video, output_dir):
+        out = os.path.join(output_dir, "bad_speed.mp4")
+        with pytest.raises(ValueError):
+            speed(test_video, out, factor=0.0)
+
+    def test_speed_invalid_too_slow(self, test_video, output_dir):
+        out = os.path.join(output_dir, "bad_speed.mp4")
+        with pytest.raises(ValueError):
+            speed(test_video, out, factor=0.1)

@@ -22,10 +22,11 @@ from cutagent.models import (
     ReorderOp,
     ExtractOp,
     FadeOp,
+    SpeedOp,
     OperationResult,
     OutputSpec,
 )
-from cutagent.operations import trim, split, concat, reorder, extract_stream, fade
+from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
 
 
 # ---------------------------------------------------------------------------
@@ -228,8 +229,19 @@ def _execute_operation(
             codec=codec if codec != "copy" else "libx264",
         )
 
+    if isinstance(op, SpeedOp):
+        source = _resolve_source(op.source, results)
+        ext = Path(source).suffix or ext
+        out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
+        return speed(
+            source,
+            out,
+            factor=op.factor,
+            codec=codec if codec != "copy" else "libx264",
+        )
+
     raise CutAgentError(
         code=INVALID_EDL,
         message=f"Unsupported operation at index {idx}: {type(op).__name__}",
-        recovery=["Use one of: trim, split, concat, reorder, extract, fade"],
+        recovery=["Use one of: trim, split, concat, reorder, extract, fade, speed"],
     )
