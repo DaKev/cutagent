@@ -32,17 +32,18 @@ def cmd_capabilities(_args) -> int:
         "operations": {
             "trim": {
                 "description": "Extract a segment between two timestamps",
-                "params": {"source": "str", "start": "time", "end": "time"},
+                "fields": {"op": "'trim'", "source": "str", "start": "time", "end": "time"},
                 "supports_copy_codec": True,
             },
             "split": {
                 "description": "Split a video at one or more timestamps",
-                "params": {"source": "str", "points": "list[time]"},
+                "fields": {"op": "'split'", "source": "str", "points": "list[time]"},
                 "supports_copy_codec": True,
             },
             "concat": {
                 "description": "Concatenate multiple files in order",
-                "params": {
+                "fields": {
+                    "op": "'concat'",
                     "segments": "list[str]",
                     "transition": "None | 'crossfade'",
                     "transition_duration": "float (>0)",
@@ -51,30 +52,53 @@ def cmd_capabilities(_args) -> int:
             },
             "reorder": {
                 "description": "Reorder segments by index and concatenate",
-                "params": {"segments": "list[str]", "order": "list[int]"},
+                "fields": {"op": "'reorder'", "segments": "list[str]", "order": "list[int]"},
                 "supports_copy_codec": True,
             },
             "extract": {
                 "description": "Extract audio or video stream",
-                "params": {"source": "str", "stream": "'audio' | 'video'"},
+                "fields": {"op": "'extract'", "source": "str", "stream": "'audio' | 'video'"},
                 "supports_copy_codec": True,
             },
             "fade": {
                 "description": "Apply fade-in/fade-out to audio and video",
-                "params": {
+                "fields": {
+                    "op": "'fade'",
                     "source": "str",
                     "fade_in": "float (seconds)",
                     "fade_out": "float (seconds)",
                 },
                 "supports_copy_codec": False,
             },
+            "speed": {
+                "description": "Change playback speed (slow-motion or speed-up)",
+                "fields": {
+                    "op": "'speed'",
+                    "source": "str",
+                    "factor": "float (0.25–100.0; >1 = faster, <1 = slower)",
+                },
+                "supports_copy_codec": False,
+            },
+        },
+        "operation_example": {
+            "_note": "All fields are top-level in the operation object — there is NO 'params' wrapper",
+            "example": {"op": "trim", "source": "$input.0", "start": "00:00:04", "end": "00:00:12"},
         },
         "time_formats": ["HH:MM:SS", "HH:MM:SS.mmm", "MM:SS", "seconds"],
         "edl_format": {
             "version": "1.0",
             "inputs": "list[str] — source file paths",
-            "operations": "list[op] — sequential operations, $N references earlier results",
+            "operations": "list[op] — sequential operations",
             "output": {"path": "str", "codec": "'copy' | codec_name"},
+            "references": {
+                "$input.N": "Reference input file by index (e.g. $input.0 for the first input)",
+                "$N": "Reference output of operation N (e.g. $0 for first operation's result)",
+            },
+            "edl_input_methods": [
+                "File path: cutagent execute my_edit.json",
+                "Stdin: echo '{...}' | cutagent execute -",
+                "Inline: cutagent execute --edl-json '{...}'",
+            ],
         },
         "probe_commands": [
             "probe",
@@ -87,6 +111,36 @@ def cmd_capabilities(_args) -> int:
             "summarize",
         ],
         "exit_codes": {"0": "success", "1": "validation_error", "2": "execution_error", "3": "system_error"},
+        "agent_workflow": [
+            "1. Run 'summarize' with --frame-dir to get content map and scene preview frames",
+            "2. Review scene frames to understand visual content of each scene",
+            "3. Use 'suggested_cut_points' for clean audio transitions",
+            "4. Trim clips at scene boundaries or suggested cut points",
+            "5. Use 'crossfade' transition in concat for smooth audio between clips",
+            "6. Apply 'fade' (fade_in/fade_out) for polished opening and closing",
+            "7. Execute via EDL for multi-step edits with $N references",
+        ],
+        "progress_output": {
+            "description": "During 'execute', progress is emitted as JSONL on stderr",
+            "format": {"progress": {"step": "int", "total": "int", "op": "str", "status": "'running' | 'done'"}},
+            "suppress": "Use --quiet / -q to suppress progress output",
+        },
+        "validate_output": {
+            "description": "Validation includes estimated output duration when computable",
+            "fields": {
+                "estimated_duration": "float (seconds) or absent if unknown",
+                "estimated_duration_formatted": "HH:MM:SS.mmm or absent if unknown",
+            },
+        },
+        "tips": [
+            "crossfade and fade require re-encoding (codec must not be 'copy')",
+            "Use 'libx264' codec when transitions or fades are needed",
+            "Scene frames at 10/50/90% offsets give a filmstrip of each scene",
+            "Only 3 operations need re-encoding: fade, crossfade concat, and speed",
+            "Use 'speed' with factor <1 for slow-motion, >1 for fast-forward",
+            "Use $input.0 in operations to reference the first input file",
+            "Use --edl-json to pass EDL inline without writing a temp file",
+        ],
     }
     return _json_out(caps)
 
@@ -230,6 +284,7 @@ def cmd_summarize(args) -> int:
             silence_threshold=args.silence_threshold,
             min_silence_duration=args.min_silence_duration,
             audio_interval=args.audio_interval,
+            include_audio_levels=args.include_audio_levels,
         )
         return _json_out({"summary": result.to_dict()})
     except CutAgentError as exc:
@@ -306,6 +361,28 @@ def cmd_fade(args) -> int:
         }, EXIT_VALIDATION)
 
 
+def cmd_speed(args) -> int:
+    """Change playback speed of a video."""
+    from cutagent.operations import speed
+    try:
+        result = speed(
+            args.file,
+            args.output,
+            factor=args.factor,
+            codec=args.codec,
+        )
+        return _json_out(result.to_dict())
+    except CutAgentError as exc:
+        return _json_error(exc)
+    except ValueError as exc:
+        return _json_out({
+            "error": True,
+            "code": "INVALID_ARGUMENT",
+            "message": str(exc),
+            "recovery": ["Use --factor between 0.25 and 100.0"],
+        }, EXIT_VALIDATION)
+
+
 def cmd_extract(args) -> int:
     """Extract audio or video stream."""
     from cutagent.operations import extract_stream
@@ -316,11 +393,40 @@ def cmd_extract(args) -> int:
         return _json_error(exc)
 
 
+def _read_edl_input(edl_arg: str | None = None, edl_json: str | None = None) -> str:
+    """Read EDL from inline JSON, stdin (if '-'), or from a file path.
+
+    Args:
+        edl_arg: Path to EDL file, or '-' for stdin.
+        edl_json: Inline EDL JSON string.
+
+    Returns:
+        EDL JSON string.
+    """
+    if edl_json:
+        return edl_json
+    if edl_arg is None:
+        raise CutAgentError(
+            code="MISSING_FIELD",
+            message="No EDL provided — pass a file path, use '-' for stdin, or use --edl-json",
+            recovery=["Provide an EDL file path", "Use '-' to read from stdin", "Use --edl-json '{...}'"],
+        )
+    if edl_arg == "-":
+        return sys.stdin.read()
+    try:
+        return Path(edl_arg).read_text()
+    except FileNotFoundError:
+        raise FileNotFoundError(f"EDL file not found: {edl_arg}")
+
+
 def cmd_validate(args) -> int:
     """Validate an EDL without executing."""
     from cutagent.validation import validate_edl
     try:
-        edl_text = Path(args.edl).read_text()
+        edl_text = _read_edl_input(
+            getattr(args, "edl", None),
+            getattr(args, "edl_json", None),
+        )
         result = validate_edl(edl_text)
         code = EXIT_SUCCESS if result.valid else EXIT_VALIDATION
         return _json_out(result.to_dict(), code)
@@ -330,24 +436,40 @@ def cmd_validate(args) -> int:
         return _json_out({
             "error": True, "code": "INPUT_NOT_FOUND",
             "message": f"EDL file not found: {args.edl}",
-            "recovery": ["Check the file path"],
+            "recovery": ["Check the file path, or use '-' to read from stdin, or use --edl-json"],
         }, EXIT_VALIDATION)
+
+
+def _make_progress_callback(quiet: bool):
+    """Return a progress callback that writes JSONL to stderr, or None if quiet."""
+    if quiet:
+        return None
+
+    def _progress(step: int, total: int, op_name: str, status: str) -> None:
+        line = json.dumps({"progress": {"step": step, "total": total, "op": op_name, "status": status}})
+        print(line, file=sys.stderr, flush=True)
+
+    return _progress
 
 
 def cmd_execute(args) -> int:
     """Execute an EDL."""
     from cutagent.engine import execute_edl
     try:
-        edl_text = Path(args.edl).read_text()
-        result = execute_edl(edl_text)
+        edl_text = _read_edl_input(
+            getattr(args, "edl", None),
+            getattr(args, "edl_json", None),
+        )
+        callback = _make_progress_callback(getattr(args, "quiet", False))
+        result = execute_edl(edl_text, progress_callback=callback)
         return _json_out(result.to_dict())
     except CutAgentError as exc:
         return _json_error(exc, EXIT_EXECUTION)
     except FileNotFoundError:
         return _json_out({
             "error": True, "code": "INPUT_NOT_FOUND",
-            "message": f"EDL file not found: {args.edl}",
-            "recovery": ["Check the file path"],
+            "message": f"EDL file not found: {getattr(args, 'edl', None)}",
+            "recovery": ["Check the file path, or use '-' to read from stdin, or use --edl-json"],
         }, EXIT_VALIDATION)
 
 
@@ -412,6 +534,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--silence-threshold", type=float, default=-30.0, help="Silence threshold in dB")
     p.add_argument("--min-silence-duration", type=float, default=0.5, help="Minimum silence duration")
     p.add_argument("--audio-interval", type=float, default=1.0, help="Audio level interval in seconds")
+    p.add_argument("--include-audio-levels", action="store_true", default=False,
+                   help="Include per-second audio levels in output (verbose)")
 
     # trim
     p = sub.add_parser("trim", help="Trim a video segment")
@@ -444,6 +568,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fade-out", type=float, default=0.0, help="Fade-out duration in seconds")
     p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
 
+    # speed
+    p = sub.add_parser("speed", help="Change playback speed")
+    p.add_argument("file", help="Path to the source video")
+    p.add_argument("-o", "--output", required=True, help="Output file path")
+    p.add_argument("--factor", type=float, required=True, help="Speed factor (>1 faster, <1 slower)")
+    p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
+
     # extract
     p = sub.add_parser("extract", help="Extract audio or video stream")
     p.add_argument("file", help="Path to the source file")
@@ -452,11 +583,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     # validate
     p = sub.add_parser("validate", help="Validate an EDL (dry-run)")
-    p.add_argument("edl", help="Path to the EDL JSON file")
+    p.add_argument("edl", nargs="?", default=None,
+                   help="Path to the EDL JSON file (or '-' for stdin)")
+    p.add_argument("--edl-json", dest="edl_json", default=None,
+                   help="Inline EDL JSON string (alternative to file path)")
 
     # execute
     p = sub.add_parser("execute", help="Execute an EDL")
-    p.add_argument("edl", help="Path to the EDL JSON file")
+    p.add_argument("edl", nargs="?", default=None,
+                   help="Path to the EDL JSON file (or '-' for stdin)")
+    p.add_argument("--edl-json", dest="edl_json", default=None,
+                   help="Inline EDL JSON string (alternative to file path)")
+    p.add_argument("-q", "--quiet", action="store_true", default=False,
+                   help="Suppress progress output on stderr")
 
     return parser
 
@@ -484,6 +623,7 @@ def main() -> None:
         "split": cmd_split,
         "concat": cmd_concat,
         "fade": cmd_fade,
+        "speed": cmd_speed,
         "extract": cmd_extract,
         "validate": cmd_validate,
         "execute": cmd_execute,

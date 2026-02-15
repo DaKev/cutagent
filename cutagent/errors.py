@@ -101,6 +101,10 @@ _RECOVERY_MAP: dict[str, list[str]] = {
     INVALID_TIME_FORMAT: [
         "Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds",
     ],
+    UNKNOWN_OPERATION: [
+        "Use one of: trim, split, concat, reorder, extract, fade, speed",
+        "Run 'cutagent capabilities' to see all supported operations",
+    ],
 }
 
 

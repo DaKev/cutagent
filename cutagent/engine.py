@@ -22,10 +22,11 @@ from cutagent.models import (
     ReorderOp,
     ExtractOp,
     FadeOp,
+    SpeedOp,
     OperationResult,
     OutputSpec,
 )
-from cutagent.operations import trim, split, concat, reorder, extract_stream, fade
+from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
 
 
 # ---------------------------------------------------------------------------
@@ -33,11 +34,17 @@ from cutagent.operations import trim, split, concat, reorder, extract_stream, fa
 # ---------------------------------------------------------------------------
 
 _REF_PREFIX = "$"
+_INPUT_REF_PREFIX = "$input."
 
 
 def _is_reference(value: str) -> bool:
     """Check if a string is an operation reference like '$0', '$1'."""
     return value.startswith(_REF_PREFIX) and value[1:].isdigit()
+
+
+def _is_input_reference(value: str) -> bool:
+    """Check if a string is an input reference like '$input.0', '$input.1'."""
+    return value.startswith(_INPUT_REF_PREFIX) and value[len(_INPUT_REF_PREFIX):].isdigit()
 
 
 def _resolve_ref(value: str, results: dict[int, str]) -> str:
@@ -53,16 +60,35 @@ def _resolve_ref(value: str, results: dict[int, str]) -> str:
     return results[idx]
 
 
-def _resolve_source(value: str, results: dict[int, str]) -> str:
-    """Resolve a source field — either a file path or a $N reference."""
+def _resolve_input_ref(value: str, inputs: list[str]) -> str:
+    """Resolve a $input.N reference to the corresponding input file path."""
+    idx = int(value[len(_INPUT_REF_PREFIX):])
+    if idx < 0 or idx >= len(inputs):
+        raise CutAgentError(
+            code=INVALID_REFERENCE,
+            message=f"Reference {value} points to input {idx}, but only {len(inputs)} inputs exist",
+            recovery=[
+                f"Use $input.0 through $input.{len(inputs) - 1}" if inputs else "Add inputs to the EDL",
+            ],
+            context={"reference": value, "input_count": len(inputs)},
+        )
+    return inputs[idx]
+
+
+def _resolve_source(value: str, results: dict[int, str], inputs: list[str] | None = None) -> str:
+    """Resolve a source field — $input.N, $N reference, or file path."""
+    if inputs is not None and _is_input_reference(value):
+        return _resolve_input_ref(value, inputs)
     if _is_reference(value):
         return _resolve_ref(value, results)
     return value
 
 
-def _resolve_segments(segments: list[str], results: dict[int, str]) -> list[str]:
-    """Resolve a list of segments, replacing any $N references."""
-    return [_resolve_source(s, results) for s in segments]
+def _resolve_segments(
+    segments: list[str], results: dict[int, str], inputs: list[str] | None = None,
+) -> list[str]:
+    """Resolve a list of segments, replacing any $input.N or $N references."""
+    return [_resolve_source(s, results, inputs) for s in segments]
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +136,10 @@ def parse_edl(raw: str | dict) -> EDL:
 # EDL execution
 # ---------------------------------------------------------------------------
 
-def execute_edl(raw: str | dict) -> OperationResult:
+def execute_edl(
+    raw: str | dict,
+    progress_callback: callable | None = None,
+) -> OperationResult:
     """Parse and execute an Edit Decision List.
 
     Operations are executed sequentially. Each produces a temp file.
@@ -119,6 +148,8 @@ def execute_edl(raw: str | dict) -> OperationResult:
 
     Args:
         raw: JSON string or dict representing the EDL.
+        progress_callback: Optional callable(step, total, op_name, status)
+            called before ("running") and after ("done") each operation.
 
     Returns:
         OperationResult for the full execution.
@@ -127,6 +158,8 @@ def execute_edl(raw: str | dict) -> OperationResult:
     output_spec = edl.output
     codec = output_spec.codec
 
+    total_ops = len(edl.operations)
+
     # Track temp files for cleanup and reference resolution
     temp_dir = tempfile.mkdtemp(prefix="cutagent_")
     results: dict[int, str] = {}  # op_index -> output file path
@@ -134,9 +167,16 @@ def execute_edl(raw: str | dict) -> OperationResult:
 
     try:
         for idx, op in enumerate(edl.operations):
-            result = _execute_operation(op, idx, results, temp_dir, codec)
+            op_name = getattr(op, "op", type(op).__name__)
+            if progress_callback:
+                progress_callback(idx + 1, total_ops, op_name, "running")
+
+            result = _execute_operation(op, idx, results, temp_dir, codec, edl.inputs)
             results[idx] = result.output_path
             all_warnings.extend(result.warnings)
+
+            if progress_callback:
+                progress_callback(idx + 1, total_ops, op_name, "done")
 
         # Copy the last operation's output to the final destination
         if results:
@@ -171,18 +211,19 @@ def _execute_operation(
     results: dict[int, str],
     temp_dir: str,
     codec: str,
+    inputs: list[str] | None = None,
 ) -> OperationResult:
     """Execute a single operation and return its result."""
     ext = ".mp4"  # default output extension
 
     if isinstance(op, TrimOp):
-        source = _resolve_source(op.source, results)
+        source = _resolve_source(op.source, results, inputs)
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return trim(source, op.start, op.end, out, codec=codec)
 
     if isinstance(op, SplitOp):
-        source = _resolve_source(op.source, results)
+        source = _resolve_source(op.source, results, inputs)
         ext = Path(source).suffix or ext
         prefix = str(Path(temp_dir) / f"op_{idx:03d}")
         split_results = split(source, op.points, prefix, codec=codec)
@@ -193,7 +234,7 @@ def _execute_operation(
         return OperationResult(success=True, output_path=prefix)
 
     if isinstance(op, ConcatOp):
-        segments = _resolve_segments(op.segments, results)
+        segments = _resolve_segments(op.segments, results, inputs)
         ext = Path(segments[0]).suffix if segments else ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return concat(
@@ -205,19 +246,19 @@ def _execute_operation(
         )
 
     if isinstance(op, ReorderOp):
-        segments = _resolve_segments(op.segments, results)
+        segments = _resolve_segments(op.segments, results, inputs)
         ext = Path(segments[0]).suffix if segments else ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return reorder(segments, op.order, out, codec=codec)
 
     if isinstance(op, ExtractOp):
-        source = _resolve_source(op.source, results)
+        source = _resolve_source(op.source, results, inputs)
         ext = ".aac" if op.stream == "audio" else Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return extract_stream(source, op.stream, out)
 
     if isinstance(op, FadeOp):
-        source = _resolve_source(op.source, results)
+        source = _resolve_source(op.source, results, inputs)
         ext = Path(source).suffix or ext
         out = op.output or str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return fade(
@@ -228,8 +269,19 @@ def _execute_operation(
             codec=codec if codec != "copy" else "libx264",
         )
 
+    if isinstance(op, SpeedOp):
+        source = _resolve_source(op.source, results, inputs)
+        ext = Path(source).suffix or ext
+        out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
+        return speed(
+            source,
+            out,
+            factor=op.factor,
+            codec=codec if codec != "copy" else "libx264",
+        )
+
     raise CutAgentError(
         code=INVALID_EDL,
         message=f"Unsupported operation at index {idx}: {type(op).__name__}",
-        recovery=["Use one of: trim, split, concat, reorder, extract, fade"],
+        recovery=["Use one of: trim, split, concat, reorder, extract, fade, speed"],
     )

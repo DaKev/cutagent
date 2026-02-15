@@ -225,3 +225,216 @@ class TestValidateEDL:
         assert not result.valid
         codes = [e["code"] for e in result.errors]
         assert "INVALID_FADE_DURATION" in codes
+
+    def test_valid_speed(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "speed", "source": test_video, "factor": 2.0},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+
+    def test_invalid_speed_factor_zero(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "speed", "source": test_video, "factor": 0.0},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_SPEED_FACTOR" in codes
+
+    def test_invalid_speed_factor_out_of_range(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "speed", "source": test_video, "factor": 0.1},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_SPEED_FACTOR" in codes
+
+
+class TestInputRefValidation:
+    """Tests for $input.N reference validation."""
+
+    def test_valid_input_ref(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+
+    def test_invalid_input_ref_out_of_range(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": "$input.5", "start": "0", "end": "3"},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_REFERENCE" in codes
+
+    def test_input_ref_in_concat_segments(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "concat", "segments": ["$input.0", "$input.0"]},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+
+    def test_mixed_input_ref_and_op_ref(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
+                {"op": "trim", "source": "$input.0", "start": "1", "end": "4"},
+                {"op": "concat", "segments": ["$0", "$1"]},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+
+
+class TestEstimatedDuration:
+    """Tests for estimated_duration in validation output."""
+
+    def test_trim_estimated_duration(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": test_video, "start": "1", "end": "4"},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+        assert result.estimated_duration == pytest.approx(3.0, abs=0.01)
+
+    def test_trim_estimated_duration_in_dict(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": test_video, "start": "0", "end": "2"},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        d = result.to_dict()
+        assert "estimated_duration" in d
+        assert d["estimated_duration"] == pytest.approx(2.0, abs=0.01)
+        assert "estimated_duration_formatted" in d
+
+    def test_concat_estimated_duration(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": test_video, "start": "0", "end": "2"},
+                {"op": "trim", "source": test_video, "start": "2", "end": "4"},
+                {"op": "concat", "segments": ["$0", "$1"]},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+        assert result.estimated_duration == pytest.approx(4.0, abs=0.01)
+
+    def test_concat_crossfade_estimated_duration(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": test_video, "start": "0", "end": "3"},
+                {"op": "trim", "source": test_video, "start": "2", "end": "5"},
+                {
+                    "op": "concat",
+                    "segments": ["$0", "$1"],
+                    "transition": "crossfade",
+                    "transition_duration": 0.5,
+                },
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+        # 3s + 3s - 0.5s crossfade = 5.5s
+        assert result.estimated_duration == pytest.approx(5.5, abs=0.01)
+
+    def test_speed_estimated_duration(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": test_video, "start": "0", "end": "4"},
+                {"op": "speed", "source": "$0", "factor": 2.0},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+        # 4s / 2x speed = 2s
+        assert result.estimated_duration == pytest.approx(2.0, abs=0.01)
+
+    def test_fade_preserves_duration(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": test_video, "start": "0", "end": "3"},
+                {"op": "fade", "source": "$0", "fade_in": 0.5, "fade_out": 0.5},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+        assert result.estimated_duration == pytest.approx(3.0, abs=0.01)
+
+    def test_no_estimated_duration_when_invalid(self):
+        """Invalid EDLs should not have estimated_duration in the dict."""
+        result = validate_edl("{bad json}")
+        d = result.to_dict()
+        assert "estimated_duration" not in d
+
+    def test_input_ref_estimated_duration(self, test_video):
+        """Estimated duration works with $input.N references too."""
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": "$input.0", "start": "0", "end": "2.5"},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+        assert result.estimated_duration == pytest.approx(2.5, abs=0.01)
