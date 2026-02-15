@@ -13,8 +13,9 @@ CutAgent is designed from the ground up for **AI agents** and **programmatic vid
 - **Agent-first**: Every command returns structured JSON — built for LLM tool use, not human eyes
 - **Declarative EDL**: Describe your edit as a JSON document, execute it in one call
 - **Zero runtime dependencies**: Pure Python + FFmpeg — nothing else to install
-- **Content intelligence**: Scene detection, silence detection, audio levels, keyframe analysis
+- **Content intelligence**: Scene detection, silence detection, audio levels, keyframe analysis, beat detection
 - **Professional operations**: Trim, split, concat, reorder, extract, fade with crossfade transitions
+- **Audio-aware editing**: Mix background music, adjust volume, replace audio, normalize loudness (EBU R128)
 - **Structured errors**: Error codes, recovery hints, and context in every failure response
 
 ## Requirements
@@ -94,6 +95,21 @@ cutagent concat clip1.mp4 clip2.mp4 -o merged.mp4
 # Extract audio
 cutagent extract interview.mp4 --stream audio -o audio.aac
 
+# Detect musical beats (for rhythm-aligned cuts)
+cutagent beats interview.mp4
+
+# Mix background music into a video
+cutagent mix interview.mp4 --audio music.mp3 --mix-level 0.2 -o with_music.mp4
+
+# Adjust audio volume
+cutagent volume interview.mp4 --gain-db 6.0 -o louder.mp4
+
+# Replace audio track
+cutagent replace-audio interview.mp4 --audio voiceover.mp3 -o replaced.mp4
+
+# Normalize audio loudness (EBU R128)
+cutagent normalize interview.mp4 -o normalized.mp4
+
 # Validate an EDL without executing
 cutagent validate edit.json
 
@@ -108,18 +124,20 @@ The Edit Decision List is a declarative JSON format for multi-step edits. Operat
 ```json
 {
   "version": "1.0",
-  "inputs": ["interview.mp4", "broll.mp4"],
+  "inputs": ["interview.mp4", "broll.mp4", "background_music.mp3"],
   "operations": [
-    {"op": "trim", "source": "interview.mp4", "start": "00:01:00", "end": "00:03:00"},
-    {"op": "trim", "source": "broll.mp4", "start": "00:00:10", "end": "00:00:20"},
+    {"op": "trim", "source": "$input.0", "start": "00:01:00", "end": "00:03:00"},
+    {"op": "trim", "source": "$input.1", "start": "00:00:10", "end": "00:00:20"},
+    {"op": "normalize", "source": "$0"},
     {"op": "fade", "source": "$1", "fade_in": 0.5, "fade_out": 0.5},
-    {"op": "concat", "segments": ["$0", "$2"], "transition": "crossfade", "transition_duration": 0.5}
+    {"op": "concat", "segments": ["$2", "$3"], "transition": "crossfade", "transition_duration": 0.5},
+    {"op": "mix_audio", "source": "$4", "audio": "$input.2", "mix_level": 0.15}
   ],
   "output": {"path": "final.mp4", "codec": "libx264"}
 }
 ```
 
-**Available operations:** `trim`, `split`, `concat`, `reorder`, `extract`, `fade`
+**Available operations:** `trim`, `split`, `concat`, `reorder`, `extract`, `fade`, `speed`, `mix_audio`, `volume`, `replace_audio`, `normalize`
 
 ## Architecture
 
@@ -132,6 +150,8 @@ The Edit Decision List is a declarative JSON format for multi-step edits. Operat
 ├──────────────────┼─────────────────┼─────────────────────────────┤
 │  probe.py        │  operations.py  │  models.py                  │
 │  Media analysis  │  Video ops      │  Typed dataclasses          │
+│  + beat detect   │  audio_ops.py   │                             │
+│                  │  Audio ops      │                             │
 ├──────────────────┴─────────────────┴─────────────────────────────┤
 │  ffmpeg.py  (subprocess wrappers)  │  errors.py  (error codes)   │
 └──────────────────────────────────────────────────────────────────┘

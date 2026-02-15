@@ -16,6 +16,10 @@ from cutagent.models import (
     ExtractOp,
     FadeOp,
     SpeedOp,
+    MixAudioOp,
+    VolumeOp,
+    ReplaceAudioOp,
+    NormalizeOp,
     parse_time,
     format_time,
 )
@@ -180,6 +184,14 @@ def _validate_operation(
         return _validate_fade(op, idx, produced, file_durations, result, input_count, _op_dur, _inputs)
     elif isinstance(op, SpeedOp):
         return _validate_speed(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
+    elif isinstance(op, MixAudioOp):
+        return _validate_mix_audio(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
+    elif isinstance(op, VolumeOp):
+        return _validate_volume(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
+    elif isinstance(op, ReplaceAudioOp):
+        return _validate_replace_audio(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
+    elif isinstance(op, NormalizeOp):
+        return _validate_normalize(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
     else:
         result.add_error(
             "UNKNOWN_OPERATION",
@@ -416,3 +428,77 @@ def _validate_speed(
     if source_dur is not None and op.factor > 0:
         return source_dur / op.factor
     return None
+
+
+def _validate_mix_audio(
+    op: MixAudioOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count)
+    _validate_source(op.audio, produced, result, input_count)
+    if op.mix_level < 0.0 or op.mix_level > 1.0:
+        result.add_error(
+            "INVALID_MIX_LEVEL",
+            f"Op {idx}: mix_level must be between 0.0 and 1.0, got {op.mix_level}",
+        )
+    return _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, inputs or [],
+    )
+
+
+def _validate_volume(
+    op: VolumeOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count)
+    if op.gain_db < -60.0 or op.gain_db > 60.0:
+        result.add_error(
+            "INVALID_GAIN_VALUE",
+            f"Op {idx}: gain_db must be between -60.0 and 60.0, got {op.gain_db}",
+        )
+    return _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, inputs or [],
+    )
+
+
+def _validate_replace_audio(
+    op: ReplaceAudioOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count)
+    _validate_source(op.audio, produced, result, input_count)
+    return _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, inputs or [],
+    )
+
+
+def _validate_normalize(
+    op: NormalizeOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count)
+    if op.target_lufs < -70.0 or op.target_lufs > -5.0:
+        result.add_error(
+            "INVALID_NORMALIZE_TARGET",
+            f"Op {idx}: target_lufs must be between -70.0 and -5.0, got {op.target_lufs}",
+        )
+    if op.true_peak_dbtp < -10.0 or op.true_peak_dbtp > 0.0:
+        result.add_error(
+            "INVALID_NORMALIZE_TARGET",
+            f"Op {idx}: true_peak_dbtp must be between -10.0 and 0.0, got {op.true_peak_dbtp}",
+        )
+    return _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, inputs or [],
+    )
