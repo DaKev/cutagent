@@ -24,8 +24,10 @@ CutAgent is designed from the ground up for **AI agents** and **programmatic vid
 
 ## Installation
 
+**From GitHub:**
+
 ```bash
-pip install cutagent
+pip install git+https://github.com/DaKev/cutagent.git
 ```
 
 **From source (development):**
