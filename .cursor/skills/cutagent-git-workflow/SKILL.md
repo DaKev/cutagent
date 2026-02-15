@@ -89,15 +89,43 @@ PR body must include:
 - **How**: Approach and notable implementation details
 - **Checklist**: All items from the PR template
 
-### 4. After PR is Merged
+### 4. Merge a Pull Request
 
-Clean up the local branch:
+When asked to merge a PR, follow this checklist:
+
+**Pre-merge checks:**
+
+1. Verify PR is in `OPEN` state and `MERGEABLE`
+2. Review the diff: `gh pr diff <number>`
+3. Check CI status: `gh pr checks <number>`
+4. Confirm the PR targets `main`
+
+**Merge strategy:**
+
+| PR author | Strategy | Command |
+|-----------|----------|---------|
+| Owner (DaKev) or AI assistant | **Squash and merge** if multiple small commits; **merge commit** if commits are already clean | See below |
+| External contributor | Always **squash and merge** for clean history | See below |
+
+```bash
+# Squash and merge (combines all commits into one)
+gh pr merge <number> --squash --delete-branch
+
+# Merge commit (preserves individual commits)
+gh pr merge <number> --merge --delete-branch
+```
+
+The `--delete-branch` flag removes the remote feature branch after merge.
+
+**Post-merge cleanup:**
 
 ```bash
 git checkout main
 git pull origin main
 git branch -d <branch-name>
 ```
+
+Always sync local `main` and delete the local branch after merging.
 
 ## Pre-Commit Checks
 
@@ -144,6 +172,10 @@ When someone opens a PR against this repo:
 | Commit | `git commit -m "feat: description"` |
 | Push branch | `git push -u origin HEAD` |
 | Create PR | `gh pr create --title "feat: thing" --body "..."` |
+| Review PR | `gh pr diff <number>` |
+| Check CI | `gh pr checks <number>` |
+| Merge (squash) | `gh pr merge <number> --squash --delete-branch` |
+| Merge (commit) | `gh pr merge <number> --merge --delete-branch` |
 | Sync main | `git checkout main && git pull origin main` |
 | Delete branch | `git branch -d feat/thing` |
 | Tag release | `git tag -a v0.2.0 -m "Release v0.2.0"` |
