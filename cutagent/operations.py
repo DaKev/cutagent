@@ -251,7 +251,8 @@ def _concat_crossfade(
     if transition_duration <= 0:
         raise ValueError("transition_duration must be > 0")
 
-    durations = [probe_file(seg).duration for seg in segments]
+    probes = [probe_file(seg) for seg in segments]
+    durations = [p.duration for p in probes]
     for i, duration in enumerate(durations):
         if duration <= transition_duration:
             raise ValueError(
@@ -259,13 +260,21 @@ def _concat_crossfade(
                 f"transition_duration ({transition_duration:.3f}s)"
             )
 
+    # xfade requires constant frame rate inputs; detect fps from first segment
+    fps = 30  # safe default
+    video_stream = probes[0].video_stream
+    if video_stream and video_stream.fps:
+        fps = video_stream.fps
+
     args: list[str] = []
     for seg in segments:
         args += ["-i", str(seg)]
 
     filters: list[str] = []
     for idx in range(len(segments)):
-        filters.append(f"[{idx}:v]settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[vsrc{idx}]")
+        filters.append(
+            f"[{idx}:v]setpts=PTS-STARTPTS,fps={fps},format=yuv420p[vsrc{idx}]"
+        )
         filters.append(f"[{idx}:a]asetpts=PTS-STARTPTS[asrc{idx}]")
 
     running_duration = durations[0]
