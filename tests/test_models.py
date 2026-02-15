@@ -174,7 +174,8 @@ class TestOperations:
         assert op.factor == 0.5
 
     def test_parse_unknown_op(self):
-        with pytest.raises(ValueError, match="Unknown operation"):
+        from cutagent.errors import CutAgentError
+        with pytest.raises(CutAgentError, match="Unknown operation"):
             parse_operation({"op": "warp"})
 
 

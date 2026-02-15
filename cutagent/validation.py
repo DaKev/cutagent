@@ -132,6 +132,11 @@ def _validate_operation(
         _validate_fade(op, idx, produced, file_durations, result)
     elif isinstance(op, SpeedOp):
         _validate_speed(op, idx, produced, result)
+    else:
+        result.add_error(
+            "UNKNOWN_OPERATION",
+            f"Op {idx}: unknown operation type: {type(op).__name__}",
+        )
 
 
 def _validate_source(source: str, produced: set[int], result: ValidationResult) -> None:

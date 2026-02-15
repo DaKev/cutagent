@@ -393,10 +393,21 @@ OPERATION_TYPES: dict[str, type] = {
 
 
 def parse_operation(data: dict):
-    """Parse a raw operation dict into a typed operation dataclass."""
+    """Parse a raw operation dict into a typed operation dataclass.
+
+    Raises:
+        CutAgentError: If the operation type is unknown.
+    """
+    from cutagent.errors import CutAgentError, UNKNOWN_OPERATION, recovery_hints
+
     op_type = data.get("op")
     if op_type not in OPERATION_TYPES:
-        raise ValueError(f"Unknown operation type: {op_type!r}")
+        raise CutAgentError(
+            code=UNKNOWN_OPERATION,
+            message=f"Unknown operation type: {op_type!r}",
+            recovery=recovery_hints(UNKNOWN_OPERATION),
+            context={"operation": op_type, "supported": list(OPERATION_TYPES.keys())},
+        )
     return OPERATION_TYPES[op_type].from_dict(data)
 
 
