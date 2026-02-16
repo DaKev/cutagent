@@ -245,7 +245,11 @@ def _concat_crossfade(
     codec: str,
     transition_duration: float,
 ) -> OperationResult:
-    """Concatenate with xfade/acrossfade transitions."""
+    """Concatenate with xfade/acrossfade transitions.
+
+    Handles video-only inputs (no audio stream) and resolution mismatches
+    by auto-normalizing dimensions via scale+pad.
+    """
     if len(segments) < 2:
         raise ValueError("crossfade transition requires at least two segments")
     if transition_duration <= 0:
@@ -260,11 +264,19 @@ def _concat_crossfade(
                 f"transition_duration ({transition_duration:.3f}s)"
             )
 
-    # xfade requires constant frame rate inputs; detect fps from first segment
-    fps = 30  # safe default
+    has_audio = all(p.audio_stream is not None for p in probes)
+
+    # Detect fps from first segment
+    fps = 30
     video_stream = probes[0].video_stream
     if video_stream and video_stream.fps:
         fps = video_stream.fps
+
+    # Detect resolution mismatches and pick a target canvas
+    resolutions = [(p.width, p.height) for p in probes]
+    needs_scale = len(set(resolutions)) > 1
+    target_w = max(r[0] for r in resolutions if r[0] is not None) if needs_scale else None
+    target_h = max(r[1] for r in resolutions if r[1] is not None) if needs_scale else None
 
     args: list[str] = []
     for seg in segments:
@@ -272,39 +284,50 @@ def _concat_crossfade(
 
     filters: list[str] = []
     for idx in range(len(segments)):
-        filters.append(
-            f"[{idx}:v]setpts=PTS-STARTPTS,fps={fps},format=yuv420p[vsrc{idx}]"
-        )
-        filters.append(f"[{idx}:a]asetpts=PTS-STARTPTS[asrc{idx}]")
+        vfilter = f"[{idx}:v]setpts=PTS-STARTPTS,fps={fps},format=yuv420p"
+        if needs_scale and target_w and target_h:
+            vfilter += (
+                f",scale={target_w}:{target_h}:"
+                f"force_original_aspect_ratio=decrease"
+                f",pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2"
+            )
+        vfilter += f"[vsrc{idx}]"
+        filters.append(vfilter)
+
+        if has_audio:
+            filters.append(f"[{idx}:a]asetpts=PTS-STARTPTS[asrc{idx}]")
 
     running_duration = durations[0]
     prev_v = "vsrc0"
-    prev_a = "asrc0"
+    prev_a = "asrc0" if has_audio else None
     for idx in range(1, len(segments)):
         offset = max(0.0, running_duration - transition_duration)
         out_v = f"vxf{idx}"
-        out_a = f"axf{idx}"
         filters.append(
             f"[{prev_v}][vsrc{idx}]xfade=transition=fade:duration={transition_duration}:"
             f"offset={offset}[{out_v}]"
         )
-        filters.append(f"[{prev_a}][asrc{idx}]acrossfade=d={transition_duration}[{out_a}]")
+
+        if has_audio:
+            out_a = f"axf{idx}"
+            filters.append(
+                f"[{prev_a}][asrc{idx}]acrossfade=d={transition_duration}[{out_a}]"
+            )
+            prev_a = out_a
+
         running_duration += durations[idx] - transition_duration
         prev_v = out_v
-        prev_a = out_a
 
     final_v = f"[{prev_v}]"
-    final_a = f"[{prev_a}]"
 
     encode_codec = codec if codec != "copy" else "libx264"
-    args += [
-        "-filter_complex", ";".join(filters),
-        "-map", final_v,
-        "-map", final_a,
-        "-c:v", encode_codec,
-        "-c:a", "aac",
-        output,
-    ]
+    args += ["-filter_complex", ";".join(filters), "-map", final_v]
+
+    if has_audio:
+        final_a = f"[{prev_a}]"
+        args += ["-map", final_a, "-c:a", "aac"]
+
+    args += ["-c:v", encode_codec, output]
 
     run_ffmpeg(args)
     return OperationResult(success=True, output_path=output)

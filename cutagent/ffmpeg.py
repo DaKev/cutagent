@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,32 +19,154 @@ from cutagent.errors import (
 
 DEFAULT_TIMEOUT = 300  # 5 minutes
 
+# Module-level cache — discovery runs once per process
+_cached_ffmpeg: str | None = None
+_cached_ffprobe: str | None = None
+
+
+def reset_cache() -> None:
+    """Clear cached binary paths. Useful for testing."""
+    global _cached_ffmpeg, _cached_ffprobe
+    _cached_ffmpeg = None
+    _cached_ffprobe = None
+
 
 # ---------------------------------------------------------------------------
-# Binary detection
+# Binary detection helpers
+# ---------------------------------------------------------------------------
+
+def _try_env_exact(env_var: str) -> str | None:
+    """Check an env var pointing to an exact binary path."""
+    value = os.environ.get(env_var)
+    if value and Path(value).is_file():
+        return value
+    return None
+
+
+def _try_env_dir(binary_name: str) -> str | None:
+    """Check CUTAGENT_FFMPEG_DIR for a binary by name."""
+    dir_path = os.environ.get("CUTAGENT_FFMPEG_DIR")
+    if not dir_path:
+        return None
+    candidate = Path(dir_path) / binary_name
+    if candidate.is_file():
+        return str(candidate)
+    # Windows: try with .exe suffix
+    candidate_exe = Path(dir_path) / f"{binary_name}.exe"
+    if candidate_exe.is_file():
+        return str(candidate_exe)
+    return None
+
+
+def _try_static_ffmpeg() -> tuple[str | None, str | None]:
+    """Try to get paths from the static-ffmpeg package (bundles both)."""
+    try:
+        from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise
+        ffmpeg_path, ffprobe_path = get_or_fetch_platform_executables_else_raise()
+        return (ffmpeg_path, ffprobe_path)
+    except Exception:
+        return (None, None)
+
+
+def _try_imageio_ffmpeg() -> str | None:
+    """Try to get ffmpeg path from imageio-ffmpeg (ffmpeg only, no ffprobe)."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def _discover_ffmpeg() -> str:
+    """Walk the fallback chain to find ffmpeg."""
+    # 1. Exact env var
+    path = _try_env_exact("CUTAGENT_FFMPEG")
+    if path:
+        return path
+
+    # 2. Directory env var
+    path = _try_env_dir("ffmpeg")
+    if path:
+        return path
+
+    # 3. System PATH
+    path = shutil.which("ffmpeg")
+    if path:
+        return path
+
+    # 4. static-ffmpeg package
+    ffmpeg_path, _ = _try_static_ffmpeg()
+    if ffmpeg_path:
+        return ffmpeg_path
+
+    # 5. imageio-ffmpeg package (ffmpeg only)
+    path = _try_imageio_ffmpeg()
+    if path:
+        return path
+
+    return ""
+
+
+def _discover_ffprobe() -> str:
+    """Walk the fallback chain to find ffprobe."""
+    # 1. Exact env var
+    path = _try_env_exact("CUTAGENT_FFPROBE")
+    if path:
+        return path
+
+    # 2. Directory env var
+    path = _try_env_dir("ffprobe")
+    if path:
+        return path
+
+    # 3. System PATH
+    path = shutil.which("ffprobe")
+    if path:
+        return path
+
+    # 4. static-ffmpeg package
+    _, ffprobe_path = _try_static_ffmpeg()
+    if ffprobe_path:
+        return ffprobe_path
+
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Public binary finders (cached)
 # ---------------------------------------------------------------------------
 
 def find_ffmpeg() -> str:
     """Return the path to the ffmpeg binary, or raise CutAgentError."""
-    path = shutil.which("ffmpeg")
-    if path is None:
+    global _cached_ffmpeg
+    if _cached_ffmpeg is not None:
+        return _cached_ffmpeg
+
+    path = _discover_ffmpeg()
+    if not path:
         raise CutAgentError(
             code=FFMPEG_NOT_FOUND,
-            message="ffmpeg binary not found on $PATH",
+            message="ffmpeg binary not found",
             recovery=recovery_hints(FFMPEG_NOT_FOUND),
         )
+    _cached_ffmpeg = path
     return path
 
 
 def find_ffprobe() -> str:
     """Return the path to the ffprobe binary, or raise CutAgentError."""
-    path = shutil.which("ffprobe")
-    if path is None:
+    global _cached_ffprobe
+    if _cached_ffprobe is not None:
+        return _cached_ffprobe
+
+    path = _discover_ffprobe()
+    if not path:
         raise CutAgentError(
             code=FFPROBE_NOT_FOUND,
-            message="ffprobe binary not found on $PATH",
+            message="ffprobe binary not found",
             recovery=recovery_hints(FFPROBE_NOT_FOUND),
         )
+    _cached_ffprobe = path
     return path
 
 
