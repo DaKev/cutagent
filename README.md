@@ -12,7 +12,7 @@ CutAgent is designed from the ground up for **AI agents** and **programmatic vid
 
 - **Agent-first**: Every command returns structured JSON — built for LLM tool use, not human eyes
 - **Declarative EDL**: Describe your edit as a JSON document, execute it in one call
-- **Zero runtime dependencies**: Pure Python + FFmpeg — nothing else to install
+- **Zero runtime dependencies**: Pure Python + FFmpeg — or `pip install 'cutagent[ffmpeg]'` to bundle everything
 - **Content intelligence**: Scene detection, silence detection, audio levels, keyframe analysis, beat detection
 - **Professional operations**: Trim, split, concat, reorder, extract, fade with crossfade transitions
 - **Audio-aware editing**: Mix background music, adjust volume, replace audio, normalize loudness (EBU R128)
@@ -21,13 +21,21 @@ CutAgent is designed from the ground up for **AI agents** and **programmatic vid
 ## Requirements
 
 - Python 3.10+
-- FFmpeg and FFprobe on `$PATH`
+- FFmpeg and FFprobe (see setup options below)
 
 ## Installation
 
 ```bash
 pip install cutagent
 ```
+
+**With bundled FFmpeg (no separate install needed):**
+
+```bash
+pip install 'cutagent[ffmpeg]'
+```
+
+This uses [static-ffmpeg](https://pypi.org/project/static-ffmpeg/) to auto-download ffmpeg + ffprobe binaries on first use. Works on Windows, macOS (Intel + Apple Silicon), and Linux.
 
 **From source (development):**
 
@@ -36,6 +44,32 @@ git clone https://github.com/DaKev/cutagent.git
 cd cutagent
 pip install -e ".[dev]"
 ```
+
+## FFmpeg Setup
+
+CutAgent needs `ffmpeg` and `ffprobe`. It searches for them in this order:
+
+1. **Environment variables** `CUTAGENT_FFMPEG` / `CUTAGENT_FFPROBE` (exact path to binary)
+2. **Environment variable** `CUTAGENT_FFMPEG_DIR` (directory containing both binaries)
+3. **System PATH** (`ffmpeg` / `ffprobe` on `$PATH`)
+4. **static-ffmpeg** package (if installed via `pip install 'cutagent[ffmpeg]'`)
+5. **imageio-ffmpeg** package (ffmpeg only, if installed)
+
+**Platform-specific install (if not using `cutagent[ffmpeg]`):**
+
+| Platform | Command |
+|----------|---------|
+| macOS | `brew install ffmpeg` |
+| Ubuntu/Debian | `sudo apt install ffmpeg` |
+| Windows | `winget install ffmpeg` or `choco install ffmpeg` |
+
+**Verify your setup:**
+
+```bash
+cutagent doctor
+```
+
+This checks for ffmpeg/ffprobe, reports versions, and flags any issues.
 
 ## Quick Start
 

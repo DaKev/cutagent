@@ -36,6 +36,7 @@ Changelog = "https://github.com/DaKev/cutagent/blob/main/CHANGELOG.md"
 cutagent = "cutagent.cli:main"
 
 [project.optional-dependencies]
+ffmpeg = ["static-ffmpeg>=3.0"]
 dev = ["pytest>=7.0"]
 
 [tool.setuptools.packages.find]

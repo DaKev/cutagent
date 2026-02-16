@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -80,15 +81,24 @@ class CutAgentError(Exception):
 # Recovery hint factory
 # ---------------------------------------------------------------------------
 
+def _ffmpeg_install_hints() -> list[str]:
+    """Return platform-specific FFmpeg install instructions."""
+    hints = ["pip install 'cutagent[ffmpeg]'  # bundles ffmpeg+ffprobe automatically"]
+    if sys.platform == "darwin":
+        hints.append("brew install ffmpeg")
+    elif sys.platform == "win32":
+        hints.append("winget install ffmpeg  OR  choco install ffmpeg")
+    else:
+        hints.append("sudo apt install ffmpeg  (Debian/Ubuntu)")
+    hints.extend([
+        "Or download from https://ffmpeg.org/download.html",
+        "Set CUTAGENT_FFMPEG=/path/to/ffmpeg to override discovery",
+        "Run 'cutagent doctor' to diagnose setup issues",
+    ])
+    return hints
+
+
 _RECOVERY_MAP: dict[str, list[str]] = {
-    FFMPEG_NOT_FOUND: [
-        "Install FFmpeg: https://ffmpeg.org/download.html",
-        "Ensure 'ffmpeg' is on your $PATH",
-    ],
-    FFPROBE_NOT_FOUND: [
-        "Install FFmpeg (includes ffprobe): https://ffmpeg.org/download.html",
-        "Ensure 'ffprobe' is on your $PATH",
-    ],
     INPUT_NOT_FOUND: [
         "Check the file path for typos",
         "Use an absolute path to avoid working-directory issues",
@@ -130,6 +140,10 @@ _RECOVERY_MAP: dict[str, list[str]] = {
 
 def recovery_hints(code: str, context: dict[str, Any] | None = None) -> list[str]:
     """Return recovery suggestions for a given error code."""
+    # Dynamic platform-specific hints for binary-not-found errors
+    if code in (FFMPEG_NOT_FOUND, FFPROBE_NOT_FOUND):
+        return _ffmpeg_install_hints()
+
     hints = list(_RECOVERY_MAP.get(code, []))
     context = context or {}
 

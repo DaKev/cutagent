@@ -118,9 +118,22 @@ def cmd_capabilities(_args) -> int:
                 "supports_copy_codec": False,
             },
         },
-        "operation_example": {
+        "operation_examples": {
             "_note": "All fields are top-level in the operation object — there is NO 'params' wrapper",
-            "example": {"op": "trim", "source": "$input.0", "start": "00:00:04", "end": "00:00:12"},
+            "trim": {"op": "trim", "source": "$input.0", "start": "00:00:04", "end": "00:00:12"},
+            "split": {"op": "split", "source": "$input.0", "points": ["00:05:00", "00:10:00"]},
+            "concat": {"op": "concat", "segments": ["$0", "$1"]},
+            "concat_crossfade": {
+                "op": "concat", "segments": ["$0", "$1"],
+                "transition": "crossfade", "transition_duration": 0.5,
+            },
+            "fade": {"op": "fade", "source": "$0", "fade_in": 1.0, "fade_out": 1.0},
+            "speed": {"op": "speed", "source": "$0", "factor": 2.0},
+            "extract": {"op": "extract", "source": "$input.0", "stream": "audio"},
+            "mix_audio": {"op": "mix_audio", "source": "$0", "audio": "$input.1", "mix_level": 0.2},
+            "volume": {"op": "volume", "source": "$0", "gain_db": 6.0},
+            "replace_audio": {"op": "replace_audio", "source": "$0", "audio": "$input.1"},
+            "normalize": {"op": "normalize", "source": "$0"},
         },
         "time_formats": ["HH:MM:SS", "HH:MM:SS.mmm", "MM:SS", "seconds"],
         "edl_format": {
@@ -231,12 +244,46 @@ def cmd_scenes(args) -> int:
         return _json_error(exc, EXIT_EXECUTION)
 
 
+def _compute_timestamps(args) -> list[float]:
+    """Compute frame timestamps from --at, --count, or --interval."""
+    from cutagent.models import parse_time
+
+    if args.at:
+        return [parse_time(v.strip()) for v in args.at.split(",") if v.strip()]
+
+    # --count or --interval require probing duration
+    from cutagent.probe import probe
+    info = probe(args.file)
+    duration = info.duration
+
+    if getattr(args, "count", None):
+        n = args.count
+        if n < 1:
+            raise ValueError("--count must be >= 1")
+        if n == 1:
+            return [duration / 2.0]
+        step = duration / (n + 1)
+        return [step * (i + 1) for i in range(n)]
+
+    if getattr(args, "interval", None):
+        iv = args.interval
+        if iv <= 0:
+            raise ValueError("--interval must be > 0")
+        timestamps = []
+        t = iv
+        while t < duration:
+            timestamps.append(t)
+            t += iv
+        return timestamps
+
+    raise ValueError("Provide --at, --count, or --interval")
+
+
 def cmd_frames(args) -> int:
     """Extract still frames at specific timestamps."""
-    from cutagent.models import parse_time
     from cutagent.probe import extract_frames
     try:
-        timestamps = [parse_time(v.strip()) for v in args.at.split(",") if v.strip()]
+        timestamps = _compute_timestamps(args)
         frames = extract_frames(
             args.file,
             timestamps=timestamps,
@@ -255,7 +302,7 @@ def cmd_frames(args) -> int:
             "error": True,
             "code": "INVALID_ARGUMENT",
             "message": str(exc),
-            "recovery": ["Check --at timestamps and --format values"],
+            "recovery": ["Provide --at timestamps, --count N, or --interval seconds"],
         }, EXIT_VALIDATION)
 
 
@@ -345,6 +392,13 @@ def cmd_trim(args) -> int:
         return _json_out(result.to_dict())
     except CutAgentError as exc:
         return _json_error(exc)
+    except ValueError as exc:
+        return _json_out({
+            "error": True,
+            "code": "INVALID_TIME_FORMAT",
+            "message": str(exc),
+            "recovery": ["Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds"],
+        }, EXIT_VALIDATION)
 
 
 def cmd_split(args) -> int:
@@ -359,6 +413,13 @@ def cmd_split(args) -> int:
         })
     except CutAgentError as exc:
         return _json_error(exc)
+    except ValueError as exc:
+        return _json_out({
+            "error": True,
+            "code": "INVALID_TIME_FORMAT",
+            "message": str(exc),
+            "recovery": ["Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds"],
+        }, EXIT_VALIDATION)
 
 
 def cmd_concat(args) -> int:
@@ -495,6 +556,12 @@ def cmd_normalize(args) -> int:
         return _json_error(exc)
 
 
+def cmd_doctor(_args) -> int:
+    """Run diagnostic checks and report system health."""
+    from cutagent.doctor import run_doctor
+    return _json_out(run_doctor())
+
+
 def cmd_beats(args) -> int:
     """Detect musical beats/onsets in audio."""
     from cutagent.probe import detect_beats
@@ -601,14 +668,20 @@ def cmd_execute(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser with all subcommands."""
+    from cutagent import __version__
+
     parser = argparse.ArgumentParser(
         prog="cutagent",
         description="Agent-first video cutting — all output is JSON",
     )
+    parser.add_argument("--version", action="version", version=f"cutagent {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     # capabilities
     sub.add_parser("capabilities", help="List all operations and their schemas")
+
+    # doctor
+    sub.add_parser("doctor", help="Check FFmpeg, FFprobe, and system prerequisites")
 
     # probe
     p = sub.add_parser("probe", help="Probe a media file for metadata")
@@ -627,7 +700,10 @@ def build_parser() -> argparse.ArgumentParser:
     # frames
     p = sub.add_parser("frames", help="Extract frames at one or more timestamps")
     p.add_argument("file", help="Path to the source video")
-    p.add_argument("--at", required=True, help="Comma-separated timestamps")
+    ts_group = p.add_mutually_exclusive_group(required=True)
+    ts_group.add_argument("--at", help="Comma-separated timestamps")
+    ts_group.add_argument("--count", type=int, help="Extract N evenly-spaced frames")
+    ts_group.add_argument("--interval", type=float, help="Extract a frame every N seconds")
     p.add_argument("--output-dir", required=True, help="Directory for extracted frames")
     p.add_argument("--format", default="jpg", choices=["jpg", "jpeg", "png"], help="Image format")
 
@@ -775,6 +851,7 @@ def main() -> None:
 
     handlers = {
         "capabilities": cmd_capabilities,
+        "doctor": cmd_doctor,
         "probe": cmd_probe,
         "keyframes": cmd_keyframes,
         "scenes": cmd_scenes,

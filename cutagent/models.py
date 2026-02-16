@@ -493,9 +493,9 @@ def parse_operation(data: dict):
     """Parse a raw operation dict into a typed operation dataclass.
 
     Raises:
-        CutAgentError: If the operation type is unknown.
+        CutAgentError: If the operation type is unknown or required fields are missing.
     """
-    from cutagent.errors import CutAgentError, UNKNOWN_OPERATION, recovery_hints
+    from cutagent.errors import CutAgentError, UNKNOWN_OPERATION, MISSING_FIELD, recovery_hints
 
     op_type = data.get("op")
     if op_type not in OPERATION_TYPES:
@@ -505,7 +505,18 @@ def parse_operation(data: dict):
             recovery=recovery_hints(UNKNOWN_OPERATION),
             context={"operation": op_type, "supported": list(OPERATION_TYPES.keys())},
         )
-    return OPERATION_TYPES[op_type].from_dict(data)
+    try:
+        return OPERATION_TYPES[op_type].from_dict(data)
+    except KeyError as exc:
+        raise CutAgentError(
+            code=MISSING_FIELD,
+            message=f"Operation '{op_type}' missing required field: {exc}",
+            recovery=[
+                f"Check the '{op_type}' operation schema in 'cutagent capabilities'",
+                "Run 'cutagent capabilities' to see required fields for each operation",
+            ],
+            context={"operation": op_type, "missing_field": str(exc).strip("'")},
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
