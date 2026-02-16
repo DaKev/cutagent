@@ -392,6 +392,13 @@ def cmd_trim(args) -> int:
         return _json_out(result.to_dict())
     except CutAgentError as exc:
         return _json_error(exc)
+    except ValueError as exc:
+        return _json_out({
+            "error": True,
+            "code": "INVALID_TIME_FORMAT",
+            "message": str(exc),
+            "recovery": ["Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds"],
+        }, EXIT_VALIDATION)
 
 
 def cmd_split(args) -> int:
@@ -406,6 +413,13 @@ def cmd_split(args) -> int:
         })
     except CutAgentError as exc:
         return _json_error(exc)
+    except ValueError as exc:
+        return _json_out({
+            "error": True,
+            "code": "INVALID_TIME_FORMAT",
+            "message": str(exc),
+            "recovery": ["Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds"],
+        }, EXIT_VALIDATION)
 
 
 def cmd_concat(args) -> int:
