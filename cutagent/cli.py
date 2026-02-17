@@ -138,6 +138,35 @@ def cmd_capabilities(_args) -> int:
                 },
                 "supports_copy_codec": False,
             },
+            "animate": {
+                "description": "Apply keyframe-driven animations (text/image layers) onto a video — Remotion-style declarative motion",
+                "fields": {
+                    "op": "'animate'",
+                    "source": "str",
+                    "fps": "int (default 30)",
+                    "layers": "list[AnimationLayer]",
+                },
+                "layer_fields": {
+                    "type": "str ('text' or 'image')",
+                    "start": "float (seconds — when layer appears)",
+                    "end": "float (seconds — when layer disappears)",
+                    "properties": "dict[str, AnimationProperty] — animated properties",
+                    "text": "str (required for text layers)",
+                    "font_size": "int (default 48, for text layers)",
+                    "font_color": "str (default 'white', for text layers)",
+                    "font": "str (optional, for text layers)",
+                    "path": "str (required for image layers — path to image file)",
+                },
+                "property_fields": {
+                    "keyframes": "list[{t: float, value: float}] — time/value pairs",
+                    "easing": "str (default 'linear'; options: linear, ease-in, ease-out, ease-in-out, spring)",
+                },
+                "animatable_properties": {
+                    "text": ["x", "y", "opacity", "font_size"],
+                    "image": ["x", "y", "opacity", "scale"],
+                },
+                "supports_copy_codec": False,
+            },
         },
         "operation_examples": {
             "_note": "All fields are top-level in the operation object — there is NO 'params' wrapper",
@@ -168,6 +197,20 @@ def cmd_capabilities(_args) -> int:
                     {"text": "Jane Doe — CEO", "position": "bottom-left", "font_size": 36,
                      "font_color": "white", "bg_color": "black@0.6", "bg_padding": 12,
                      "start": "00:00:02", "end": "00:00:08"},
+                ],
+            },
+            "animate": {
+                "op": "animate", "source": "$input.0", "fps": 30,
+                "layers": [
+                    {
+                        "type": "text", "text": "Hello World",
+                        "font_size": 48, "font_color": "white",
+                        "start": 0.0, "end": 3.0,
+                        "properties": {
+                            "x": {"keyframes": [{"t": 0.0, "value": -200}, {"t": 1.0, "value": 100}], "easing": "ease-out"},
+                            "opacity": {"keyframes": [{"t": 0.0, "value": 0.0}, {"t": 0.5, "value": 1.0}], "easing": "linear"},
+                        },
+                    },
                 ],
             },
         },
@@ -623,6 +666,38 @@ def cmd_text(args) -> int:
         }, EXIT_VALIDATION)
 
 
+def cmd_animate(args) -> int:
+    """Apply keyframe-driven animations onto a video."""
+    import json as _json
+    from cutagent.animation_ops import animate
+    from cutagent.models import AnimationLayer
+    try:
+        layers_raw = _json.loads(args.layers_json)
+        if isinstance(layers_raw, dict):
+            layers_raw = [layers_raw]
+        layers = [AnimationLayer.from_dict(l) for l in layers_raw]
+        result = animate(
+            args.file, layers, args.output,
+            fps=args.fps,
+            codec=args.codec,
+        )
+        return _json_out(result.to_dict())
+    except CutAgentError as exc:
+        return _json_error(exc)
+    except (_json.JSONDecodeError, KeyError, TypeError) as exc:
+        return _json_out({
+            "error": True,
+            "code": "INVALID_ARGUMENT",
+            "message": f"Invalid --layers-json: {exc}",
+            "recovery": [
+                "Pass a JSON array of animation layer objects",
+                "Each layer needs 'type' and 'properties' fields",
+                "Example: '[{\"type\": \"text\", \"text\": \"Hello\", \"start\": 0, \"end\": 3, "
+                "\"properties\": {\"opacity\": {\"keyframes\": [{\"t\": 0, \"value\": 0}, {\"t\": 1, \"value\": 1}]}}}]'",
+            ],
+        }, EXIT_VALIDATION)
+
+
 def cmd_doctor(_args) -> int:
     """Run diagnostic checks and report system health."""
     from cutagent.doctor import run_doctor
@@ -888,6 +963,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--output", required=True, help="Output file path")
     p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
 
+    # animate
+    p = sub.add_parser("animate", help="Apply keyframe-driven animations onto a video")
+    p.add_argument("file", help="Path to the source video")
+    p.add_argument("--layers-json", required=True,
+                   help="JSON array of animation layer objects (or a single layer object)")
+    p.add_argument("-o", "--output", required=True, help="Output file path")
+    p.add_argument("--fps", type=int, default=30, help="Output frame rate (default: 30)")
+    p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
+
     # beats
     p = sub.add_parser("beats", help="Detect musical beats/onsets in audio")
     p.add_argument("file", help="Path to the source media")
@@ -947,6 +1031,7 @@ def main() -> None:
         "replace-audio": cmd_replace_audio,
         "normalize": cmd_normalize,
         "text": cmd_text,
+        "animate": cmd_animate,
         "validate": cmd_validate,
         "execute": cmd_execute,
     }

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Animation operation (`animate`) — declarative keyframe-driven animations compiled to FFmpeg filter expressions
+- Support for animated text layers with `x`, `y`, `opacity`, and `font_size` properties
+- Support for animated image overlay layers with `x`, `y`, `opacity`, and `scale` properties
+- Five easing functions: `linear`, `ease-in`, `ease-out`, `ease-in-out`, `spring` (damped oscillation)
+- Multi-segment keyframe interpolation with piecewise easing
+- New CLI command: `animate`
+- Full integration into EDL engine, validation, and capabilities schema
 - Text overlay operation (`text` / `add_text`) — burn titles, descriptions, and annotations onto video using FFmpeg's `drawtext` filter
 - Seven position presets (center, top-center, bottom-center, top-left, top-right, bottom-left, bottom-right) plus custom `x,y` coordinates
 - Timed text display with `start`/`end` fields and optional background boxes

@@ -47,6 +47,13 @@ INVALID_TEXT_POSITION = "INVALID_TEXT_POSITION"
 INVALID_FONT_SIZE = "INVALID_FONT_SIZE"
 INVALID_TEXT_TIMING = "INVALID_TEXT_TIMING"
 
+# Animation operations
+EMPTY_ANIMATION_LAYERS = "EMPTY_ANIMATION_LAYERS"
+INVALID_LAYER_TYPE = "INVALID_LAYER_TYPE"
+INVALID_ANIMATION_EASING = "INVALID_ANIMATION_EASING"
+INVALID_ANIMATION_PROPERTY = "INVALID_ANIMATION_PROPERTY"
+MISSING_LAYER_FIELD = "MISSING_LAYER_FIELD"
+
 # Output
 OUTPUT_DIR_NOT_FOUND = "OUTPUT_DIR_NOT_FOUND"
 OUTPUT_ALREADY_EXISTS = "OUTPUT_ALREADY_EXISTS"
@@ -124,7 +131,7 @@ _RECOVERY_MAP: dict[str, list[str]] = {
         "Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds",
     ],
     UNKNOWN_OPERATION: [
-        "Use one of: trim, split, concat, reorder, extract, fade, speed, mix_audio, volume, replace_audio, normalize, text",
+        "Use one of: trim, split, concat, reorder, extract, fade, speed, mix_audio, volume, replace_audio, normalize, text, animate",
         "Run 'cutagent capabilities' to see all supported operations",
     ],
     INVALID_MIX_LEVEL: [
@@ -155,6 +162,24 @@ _RECOVERY_MAP: dict[str, list[str]] = {
     INVALID_TEXT_TIMING: [
         "Ensure start time is before end time",
         "Use HH:MM:SS, MM:SS, or plain seconds for start/end",
+    ],
+    EMPTY_ANIMATION_LAYERS: [
+        "Add at least one layer to the 'layers' list",
+        "Each layer needs 'type', 'start', 'end', and 'properties'",
+    ],
+    INVALID_LAYER_TYPE: [
+        "Use 'text' or 'image' as the layer type",
+    ],
+    INVALID_ANIMATION_EASING: [
+        "Use one of: linear, ease-in, ease-out, ease-in-out, spring",
+    ],
+    INVALID_ANIMATION_PROPERTY: [
+        "Text layers support: x, y, opacity, font_size",
+        "Image layers support: x, y, opacity, scale",
+    ],
+    MISSING_LAYER_FIELD: [
+        "Text layers require a 'text' field",
+        "Image layers require a 'path' field pointing to an image file",
     ],
 }
 
