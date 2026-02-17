@@ -41,6 +41,12 @@ INVALID_GAIN_VALUE = "INVALID_GAIN_VALUE"
 AUDIO_STREAM_MISSING = "AUDIO_STREAM_MISSING"
 INVALID_NORMALIZE_TARGET = "INVALID_NORMALIZE_TARGET"
 
+# Text operations
+EMPTY_TEXT_ENTRIES = "EMPTY_TEXT_ENTRIES"
+INVALID_TEXT_POSITION = "INVALID_TEXT_POSITION"
+INVALID_FONT_SIZE = "INVALID_FONT_SIZE"
+INVALID_TEXT_TIMING = "INVALID_TEXT_TIMING"
+
 # Output
 OUTPUT_DIR_NOT_FOUND = "OUTPUT_DIR_NOT_FOUND"
 OUTPUT_ALREADY_EXISTS = "OUTPUT_ALREADY_EXISTS"
@@ -118,7 +124,7 @@ _RECOVERY_MAP: dict[str, list[str]] = {
         "Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds",
     ],
     UNKNOWN_OPERATION: [
-        "Use one of: trim, split, concat, reorder, extract, fade, speed, mix_audio, volume, replace_audio, normalize",
+        "Use one of: trim, split, concat, reorder, extract, fade, speed, mix_audio, volume, replace_audio, normalize, text",
         "Run 'cutagent capabilities' to see all supported operations",
     ],
     INVALID_MIX_LEVEL: [
@@ -134,6 +140,21 @@ _RECOVERY_MAP: dict[str, list[str]] = {
     INVALID_NORMALIZE_TARGET: [
         "target_lufs must be between -70.0 and -5.0 (standard broadcast is -16 or -23)",
         "true_peak_dbtp must be between -10.0 and 0.0 (standard is -1.5)",
+    ],
+    EMPTY_TEXT_ENTRIES: [
+        "Add at least one entry to the 'entries' list",
+        "Each entry needs at minimum a 'text' field",
+    ],
+    INVALID_TEXT_POSITION: [
+        "Use a preset: center, top-center, bottom-center, top-left, top-right, bottom-left, bottom-right",
+        "Or use custom coordinates as 'x,y' (e.g. '100,200')",
+    ],
+    INVALID_FONT_SIZE: [
+        "font_size must be a positive integer (e.g. 48 for body text, 72 for titles)",
+    ],
+    INVALID_TEXT_TIMING: [
+        "Ensure start time is before end time",
+        "Use HH:MM:SS, MM:SS, or plain seconds for start/end",
     ],
 }
 

@@ -473,6 +473,59 @@ class NormalizeOp:
         )
 
 
+# ---------------------------------------------------------------------------
+# Text overlay
+# ---------------------------------------------------------------------------
+
+# Valid position presets for text placement
+TEXT_POSITIONS = {
+    "center", "top-center", "bottom-center",
+    "top-left", "top-right", "bottom-left", "bottom-right",
+}
+
+
+@dataclass
+class TextEntry:
+    """A single text overlay entry with position, timing, and styling."""
+    text: str
+    position: str = "center"
+    font_size: int = 48
+    font_color: str = "white"
+    start: Optional[str] = None
+    end: Optional[str] = None
+    bg_color: Optional[str] = None
+    bg_padding: int = 10
+    font: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        return {k: v for k, v in d.items() if v is not None}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> TextEntry:
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class TextOp:
+    """Burn one or more text overlays onto a video."""
+    source: str
+    entries: list[TextEntry] = field(default_factory=list)
+    op: str = "text"
+
+    def to_dict(self) -> dict:
+        return {
+            "op": self.op,
+            "source": self.source,
+            "entries": [e.to_dict() for e in self.entries],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> TextOp:
+        entries = [TextEntry.from_dict(e) for e in data.get("entries", [])]
+        return cls(source=data["source"], entries=entries)
+
+
 # Registry for parsing operation dicts into typed objects
 OPERATION_TYPES: dict[str, type] = {
     "trim": TrimOp,
@@ -486,6 +539,7 @@ OPERATION_TYPES: dict[str, type] = {
     "volume": VolumeOp,
     "replace_audio": ReplaceAudioOp,
     "normalize": NormalizeOp,
+    "text": TextOp,
 }
 
 

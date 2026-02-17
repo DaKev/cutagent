@@ -7,6 +7,7 @@ Public API:
     summarize                                                — unified content map
     trim, split, concat, reorder, extract_stream, fade, speed — video operations
     mix_audio, adjust_volume, replace_audio, normalize_audio  — audio operations
+    add_text                                                 — text overlay operations
     parse_edl, execute_edl                                  — EDL engine
     validate_edl                                            — dry-run validation
     CutAgentError                                           — structured errors
@@ -26,6 +27,7 @@ from cutagent.probe import (
 )
 from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
 from cutagent.audio_ops import mix_audio, adjust_volume, replace_audio, normalize_audio
+from cutagent.text_ops import add_text
 from cutagent.engine import parse_edl, execute_edl
 from cutagent.validation import validate_edl
 from cutagent.errors import CutAgentError
@@ -42,6 +44,8 @@ from cutagent.models import (
     VolumeOp,
     ReplaceAudioOp,
     NormalizeOp,
+    TextOp,
+    TextEntry,
     OperationResult,
     EDL,
 )
@@ -73,6 +77,8 @@ __all__ = [
     "adjust_volume",
     "replace_audio",
     "normalize_audio",
+    # Text operations
+    "add_text",
     # EDL engine
     "parse_edl",
     "execute_edl",
@@ -91,6 +97,8 @@ __all__ = [
     "VolumeOp",
     "ReplaceAudioOp",
     "NormalizeOp",
+    "TextOp",
+    "TextEntry",
     "OperationResult",
     "EDL",
     "CutAgentError",
