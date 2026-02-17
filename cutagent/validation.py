@@ -20,10 +20,17 @@ from cutagent.models import (
     VolumeOp,
     ReplaceAudioOp,
     NormalizeOp,
+    TextOp,
+    TextEntry,
+    TEXT_POSITIONS,
     parse_time,
     format_time,
 )
 from cutagent.probe import probe
+
+import re
+
+_CUSTOM_POS_RE = re.compile(r"^\d+\s*,\s*\d+$")
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +199,8 @@ def _validate_operation(
         return _validate_replace_audio(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
     elif isinstance(op, NormalizeOp):
         return _validate_normalize(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
+    elif isinstance(op, TextOp):
+        return _validate_text(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
     else:
         result.add_error(
             "UNKNOWN_OPERATION",
@@ -499,6 +508,57 @@ def _validate_normalize(
             "INVALID_NORMALIZE_TARGET",
             f"Op {idx}: true_peak_dbtp must be between -10.0 and 0.0, got {op.true_peak_dbtp}",
         )
+    return _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, inputs or [],
+    )
+
+
+def _validate_text(
+    op: TextOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    """Validate a text overlay operation."""
+    _validate_source(op.source, produced, result, input_count)
+
+    if not op.entries:
+        result.add_error(
+            "EMPTY_TEXT_ENTRIES",
+            f"Op {idx}: no text entries provided — at least one is required",
+        )
+        return _resolve_source_duration(
+            op.source, file_durations or {}, op_durations or {}, inputs or [],
+        )
+
+    for i, entry in enumerate(op.entries):
+        if entry.font_size <= 0:
+            result.add_error(
+                "INVALID_FONT_SIZE",
+                f"Op {idx}, entry {i}: font_size must be > 0, got {entry.font_size}",
+            )
+        if entry.position not in TEXT_POSITIONS and not _CUSTOM_POS_RE.match(entry.position):
+            result.add_error(
+                "INVALID_TEXT_POSITION",
+                f"Op {idx}, entry {i}: invalid position {entry.position!r}",
+            )
+        if entry.start is not None and entry.end is not None:
+            try:
+                start_sec = parse_time(entry.start)
+                end_sec = parse_time(entry.end)
+                if start_sec >= end_sec:
+                    result.add_error(
+                        "INVALID_TEXT_TIMING",
+                        f"Op {idx}, entry {i}: start ({entry.start}) >= end ({entry.end})",
+                    )
+            except ValueError:
+                result.add_error(
+                    "INVALID_TIME_FORMAT",
+                    f"Op {idx}, entry {i}: invalid time format in start/end",
+                )
+
+    # Text preserves duration
     return _resolve_source_duration(
         op.source, file_durations or {}, op_durations or {}, inputs or [],
     )

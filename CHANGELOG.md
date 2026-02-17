@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Text overlay operation (`text` / `add_text`) — burn titles, descriptions, and annotations onto video using FFmpeg's `drawtext` filter
+- Seven position presets (center, top-center, bottom-center, top-left, top-right, bottom-left, bottom-right) plus custom `x,y` coordinates
+- Timed text display with `start`/`end` fields and optional background boxes
+- Multiple text entries per operation for layered overlays
+- New CLI command: `text`
+- Full integration into EDL engine, validation, and capabilities schema
 - Audio mix operation (`mix_audio`) — overlay background music onto a video's existing audio with adjustable mix level
 - Volume adjustment operation (`volume`) — boost or reduce audio gain in dB
 - Audio replacement operation (`replace_audio`) — swap a video's audio track with a different audio file

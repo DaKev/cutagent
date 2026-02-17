@@ -27,11 +27,13 @@ from cutagent.models import (
     VolumeOp,
     ReplaceAudioOp,
     NormalizeOp,
+    TextOp,
     OperationResult,
     OutputSpec,
 )
 from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
 from cutagent.audio_ops import mix_audio, adjust_volume, replace_audio, normalize_audio
+from cutagent.text_ops import add_text
 
 
 # ---------------------------------------------------------------------------
@@ -324,8 +326,17 @@ def _execute_operation(
             codec=codec if codec != "copy" else "libx264",
         )
 
+    if isinstance(op, TextOp):
+        source = _resolve_source(op.source, results, inputs)
+        ext = Path(source).suffix or ext
+        out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
+        return add_text(
+            source, op.entries, out,
+            codec=codec if codec != "copy" else "libx264",
+        )
+
     raise CutAgentError(
         code=INVALID_EDL,
         message=f"Unsupported operation at index {idx}: {type(op).__name__}",
-        recovery=["Use one of: trim, split, concat, reorder, extract, fade, speed, mix_audio, volume, replace_audio, normalize"],
+        recovery=["Use one of: trim, split, concat, reorder, extract, fade, speed, mix_audio, volume, replace_audio, normalize, text"],
     )

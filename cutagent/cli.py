@@ -117,6 +117,27 @@ def cmd_capabilities(_args) -> int:
                 },
                 "supports_copy_codec": False,
             },
+            "text": {
+                "description": "Burn text overlays, titles, descriptions, or annotations onto a video",
+                "fields": {
+                    "op": "'text'",
+                    "source": "str",
+                    "entries": "list[TextEntry]",
+                },
+                "entry_fields": {
+                    "text": "str (required — the text to display)",
+                    "position": "str (default 'center'; presets: center, top-center, bottom-center, "
+                                "top-left, top-right, bottom-left, bottom-right; or 'x,y')",
+                    "font_size": "int (default 48)",
+                    "font_color": "str (default 'white'; any FFmpeg color name or hex)",
+                    "start": "time (optional — when text appears)",
+                    "end": "time (optional — when text disappears)",
+                    "bg_color": "str (optional — e.g. 'black@0.5' for semi-transparent background)",
+                    "bg_padding": "int (default 10 — padding around text when bg_color is set)",
+                    "font": "str (optional — font family name)",
+                },
+                "supports_copy_codec": False,
+            },
         },
         "operation_examples": {
             "_note": "All fields are top-level in the operation object — there is NO 'params' wrapper",
@@ -134,6 +155,21 @@ def cmd_capabilities(_args) -> int:
             "volume": {"op": "volume", "source": "$0", "gain_db": 6.0},
             "replace_audio": {"op": "replace_audio", "source": "$0", "audio": "$input.1"},
             "normalize": {"op": "normalize", "source": "$0"},
+            "text": {
+                "op": "text", "source": "$input.0",
+                "entries": [
+                    {"text": "Interview Title", "position": "center", "font_size": 72,
+                     "font_color": "white", "start": "0", "end": "3", "bg_color": "black@0.5"},
+                ],
+            },
+            "text_lower_third": {
+                "op": "text", "source": "$0",
+                "entries": [
+                    {"text": "Jane Doe — CEO", "position": "bottom-left", "font_size": 36,
+                     "font_color": "white", "bg_color": "black@0.6", "bg_padding": 12,
+                     "start": "00:00:02", "end": "00:00:08"},
+                ],
+            },
         },
         "time_formats": ["HH:MM:SS", "HH:MM:SS.mmm", "MM:SS", "seconds"],
         "edl_format": {
@@ -173,7 +209,8 @@ def cmd_capabilities(_args) -> int:
             "7. Use 'mix_audio' to layer background music at a subtle level (mix_level 0.1–0.2)",
             "8. Use 'crossfade' transition in concat for smooth audio between clips",
             "9. Apply 'fade' (fade_in/fade_out) for polished opening and closing",
-            "10. Execute via EDL for multi-step edits with $N references",
+            "10. Use 'text' to add titles, lower thirds, or annotations with timed display",
+            "11. Execute via EDL for multi-step edits with $N references",
         ],
         "progress_output": {
             "description": "During 'execute', progress is emitted as JSONL on stderr",
@@ -191,7 +228,7 @@ def cmd_capabilities(_args) -> int:
             "crossfade and fade require re-encoding (codec must not be 'copy')",
             "Use 'libx264' codec when transitions or fades are needed",
             "Scene frames at 10/50/90% offsets give a filmstrip of each scene",
-            "Operations needing re-encode: fade, crossfade concat, speed, mix_audio, normalize",
+            "Operations needing re-encode: fade, crossfade concat, speed, mix_audio, normalize, text",
             "Use 'speed' with factor <1 for slow-motion, >1 for fast-forward",
             "Use $input.0 in operations to reference the first input file",
             "Use --edl-json to pass EDL inline without writing a temp file",
@@ -556,6 +593,36 @@ def cmd_normalize(args) -> int:
         return _json_error(exc)
 
 
+def cmd_text(args) -> int:
+    """Burn text overlays onto a video."""
+    import json as _json
+    from cutagent.text_ops import add_text
+    from cutagent.models import TextEntry
+    try:
+        entries_raw = _json.loads(args.entries_json)
+        if isinstance(entries_raw, dict):
+            entries_raw = [entries_raw]
+        entries = [TextEntry.from_dict(e) for e in entries_raw]
+        result = add_text(
+            args.file, entries, args.output,
+            codec=args.codec,
+        )
+        return _json_out(result.to_dict())
+    except CutAgentError as exc:
+        return _json_error(exc)
+    except (_json.JSONDecodeError, KeyError, TypeError) as exc:
+        return _json_out({
+            "error": True,
+            "code": "INVALID_ARGUMENT",
+            "message": f"Invalid --entries-json: {exc}",
+            "recovery": [
+                "Pass a JSON array of text entry objects",
+                "Each entry needs at minimum a 'text' field",
+                "Example: '[{\"text\": \"Hello\", \"position\": \"center\"}]'",
+            ],
+        }, EXIT_VALIDATION)
+
+
 def cmd_doctor(_args) -> int:
     """Run diagnostic checks and report system health."""
     from cutagent.doctor import run_doctor
@@ -813,6 +880,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Maximum true peak in dBTP (default: -1.5)")
     p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
 
+    # text
+    p = sub.add_parser("text", help="Burn text overlays onto a video")
+    p.add_argument("file", help="Path to the source video")
+    p.add_argument("--entries-json", required=True,
+                   help="JSON array of text entries (or a single entry object)")
+    p.add_argument("-o", "--output", required=True, help="Output file path")
+    p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
+
     # beats
     p = sub.add_parser("beats", help="Detect musical beats/onsets in audio")
     p.add_argument("file", help="Path to the source media")
@@ -871,6 +946,7 @@ def main() -> None:
         "volume": cmd_volume,
         "replace-audio": cmd_replace_audio,
         "normalize": cmd_normalize,
+        "text": cmd_text,
         "validate": cmd_validate,
         "execute": cmd_execute,
     }
