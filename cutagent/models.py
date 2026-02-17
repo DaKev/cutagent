@@ -526,6 +526,125 @@ class TextOp:
         return cls(source=data["source"], entries=entries)
 
 
+# ---------------------------------------------------------------------------
+# Animation types
+# ---------------------------------------------------------------------------
+
+ANIMATION_EASINGS = {"linear", "ease-in", "ease-out", "ease-in-out", "spring"}
+ANIMATION_LAYER_TYPES = {"text", "image"}
+TEXT_ANIMATABLE_PROPS = {"x", "y", "opacity", "font_size"}
+IMAGE_ANIMATABLE_PROPS = {"x", "y", "opacity", "scale"}
+
+
+@dataclass
+class AnimationKeyframe:
+    """A single keyframe: time + value."""
+    t: float
+    value: float
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> AnimationKeyframe:
+        return cls(t=float(data["t"]), value=float(data["value"]))
+
+
+@dataclass
+class AnimationProperty:
+    """An animated property with keyframes and easing."""
+    keyframes: list[AnimationKeyframe]
+    easing: str = "linear"
+
+    def to_dict(self) -> dict:
+        return {
+            "keyframes": [kf.to_dict() for kf in self.keyframes],
+            "easing": self.easing,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> AnimationProperty:
+        kfs = [AnimationKeyframe.from_dict(kf) for kf in data["keyframes"]]
+        return cls(keyframes=kfs, easing=data.get("easing", "linear"))
+
+
+@dataclass
+class AnimationLayer:
+    """A single animation layer (text or image) with animated properties."""
+    type: str  # "text" or "image"
+    start: float = 0.0
+    end: float = 5.0
+    properties: dict[str, AnimationProperty] = field(default_factory=dict)
+    # Text-specific fields
+    text: Optional[str] = None
+    font_size: int = 48
+    font_color: str = "white"
+    font: Optional[str] = None
+    # Image-specific fields
+    path: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        d: dict = {
+            "type": self.type,
+            "start": self.start,
+            "end": self.end,
+            "properties": {k: v.to_dict() for k, v in self.properties.items()},
+        }
+        if self.type == "text":
+            d["text"] = self.text
+            d["font_size"] = self.font_size
+            d["font_color"] = self.font_color
+            if self.font:
+                d["font"] = self.font
+        elif self.type == "image":
+            d["path"] = self.path
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict) -> AnimationLayer:
+        props = {
+            k: AnimationProperty.from_dict(v)
+            for k, v in data.get("properties", {}).items()
+        }
+        return cls(
+            type=data["type"],
+            start=float(data.get("start", 0.0)),
+            end=float(data.get("end", 5.0)),
+            properties=props,
+            text=data.get("text"),
+            font_size=int(data.get("font_size", 48)),
+            font_color=data.get("font_color", "white"),
+            font=data.get("font"),
+            path=data.get("path"),
+        )
+
+
+@dataclass
+class AnimateOp:
+    """Apply keyframe-driven animations (text/image layers) onto a video."""
+    source: str
+    layers: list[AnimationLayer] = field(default_factory=list)
+    fps: int = 30
+    op: str = "animate"
+
+    def to_dict(self) -> dict:
+        return {
+            "op": self.op,
+            "source": self.source,
+            "fps": self.fps,
+            "layers": [layer.to_dict() for layer in self.layers],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> AnimateOp:
+        layers = [AnimationLayer.from_dict(l) for l in data.get("layers", [])]
+        return cls(
+            source=data["source"],
+            layers=layers,
+            fps=int(data.get("fps", 30)),
+        )
+
+
 # Registry for parsing operation dicts into typed objects
 OPERATION_TYPES: dict[str, type] = {
     "trim": TrimOp,
@@ -540,6 +659,7 @@ OPERATION_TYPES: dict[str, type] = {
     "replace_audio": ReplaceAudioOp,
     "normalize": NormalizeOp,
     "text": TextOp,
+    "animate": AnimateOp,
 }
 
 
