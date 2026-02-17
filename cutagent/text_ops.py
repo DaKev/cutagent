@@ -57,11 +57,13 @@ def _resolve_position(position: str) -> tuple[str, str]:
 
 def _escape_drawtext(text: str) -> str:
     """Escape special characters for FFmpeg drawtext filter value."""
-    # FFmpeg drawtext requires escaping: ' \ : and sometimes ;
+    # FFmpeg drawtext requires escaping: \ ' : ; and %
+    # Order matters — backslash first to avoid double-escaping
     text = text.replace("\\", "\\\\")
     text = text.replace("'", "'\\\\\\''")
     text = text.replace(":", "\\:")
     text = text.replace(";", "\\;")
+    text = text.replace("%", "%%")
     return text
 
 

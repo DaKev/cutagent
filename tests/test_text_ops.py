@@ -1,6 +1,5 @@
 """Tests for cutagent.text_ops — text overlay, descriptions, and annotations."""
 
-import json
 import os
 import subprocess
 

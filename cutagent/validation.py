@@ -28,6 +28,10 @@ from cutagent.models import (
 )
 from cutagent.probe import probe
 
+import re
+
+_CUSTOM_POS_RE = re.compile(r"^\d+\s*,\s*\d+$")
+
 
 # ---------------------------------------------------------------------------
 # Validation result
@@ -517,7 +521,6 @@ def _validate_text(
     inputs: list[str] | None = None,
 ) -> Optional[float]:
     """Validate a text overlay operation."""
-    import re
     _validate_source(op.source, produced, result, input_count)
 
     if not op.entries:
@@ -529,14 +532,13 @@ def _validate_text(
             op.source, file_durations or {}, op_durations or {}, inputs or [],
         )
 
-    custom_pos_re = re.compile(r"^\d+\s*,\s*\d+$")
     for i, entry in enumerate(op.entries):
         if entry.font_size <= 0:
             result.add_error(
                 "INVALID_FONT_SIZE",
                 f"Op {idx}, entry {i}: font_size must be > 0, got {entry.font_size}",
             )
-        if entry.position not in TEXT_POSITIONS and not custom_pos_re.match(entry.position):
+        if entry.position not in TEXT_POSITIONS and not _CUSTOM_POS_RE.match(entry.position):
             result.add_error(
                 "INVALID_TEXT_POSITION",
                 f"Op {idx}, entry {i}: invalid position {entry.position!r}",
