@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-18
+
+### Added
+
+- Styling parity between `text` and `animate`: `animate` layers now support `bg_color`, `bg_padding`, `shadow_color`, `shadow_offset`, `stroke_color`, and `stroke_width` — the same styling properties available in `text`
+- Shadow and stroke support on static `text` entries via `shadow_color`/`shadow_offset` and `stroke_color`/`stroke_width`
+- `--entries-file` flag for `text` command — load text entries from a JSON file instead of an inline string
+- `--layers-file` flag for `animate` command — load animation layers from a JSON file instead of an inline string
+- `review_timestamps` field in `text` and `animate` JSON output — midpoint timestamps for each overlay, ready for use with `cutagent frames --at` to visually verify overlays
+- `text_layers` summary field in `text` and `animate` JSON output — concise per-layer metadata for agent consumption
+- `edl_compatible` field on every operation in `capabilities` output — agents can now know upfront which operations work in EDL
+- `keyframe_t_note` in `capabilities` `animate` schema — clarifies that `t` is absolute timeline time, not relative to layer start
+- Agent workflow step in `capabilities`: extract frames at `review_timestamps` after text/animate to visually verify overlays
+- Sans-serif font auto-detection (`Arial`, `Helvetica Neue`, `DejaVu Sans`, `Liberation Sans`) as default font for text and animate overlays, replacing the previous monospace default
+
+### Fixed
+
+- EDL executor now correctly recognises and runs `AnimateOp` — previously raised `unknown operation type: AnimateOp`
+- EDL validator now validates `AnimateOp` with full field and constraint checks (layer type, required fields, animatable properties, easing functions)
+
 ## [0.2.0] - 2026-02-17
 
 ### Added
