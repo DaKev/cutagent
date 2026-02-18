@@ -27,8 +27,15 @@ def _ffmpeg_has_drawtext(ffmpeg_bin: str = "ffmpeg") -> bool:
 
 
 def _find_drawtext_ffmpeg() -> str | None:
-    """Find an FFmpeg binary with drawtext support (system or static-ffmpeg)."""
+    """Find an FFmpeg binary with drawtext support."""
     import shutil
+    from pathlib import Path
+    # Honour CUTAGENT_FFMPEG_DIR (used for testing with ffmpeg-full)
+    ffmpeg_dir = os.environ.get("CUTAGENT_FFMPEG_DIR")
+    if ffmpeg_dir:
+        candidate = str(Path(ffmpeg_dir) / "ffmpeg")
+        if _ffmpeg_has_drawtext(candidate):
+            return candidate
     system = shutil.which("ffmpeg")
     if system and _ffmpeg_has_drawtext(system):
         return system

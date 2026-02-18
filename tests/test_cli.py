@@ -11,7 +11,10 @@ from typing import Optional
 import pytest
 
 
-def _ffmpeg_has_drawtext(ffmpeg_bin: str = "ffmpeg") -> bool:
+def _ffmpeg_has_drawtext() -> bool:
+    ffmpeg_dir = os.environ.get("CUTAGENT_FFMPEG_DIR")
+    from pathlib import Path
+    ffmpeg_bin = str(Path(ffmpeg_dir) / "ffmpeg") if ffmpeg_dir else "ffmpeg"
     try:
         result = subprocess.run(
             [ffmpeg_bin, "-filters"],
