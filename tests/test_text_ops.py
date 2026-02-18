@@ -393,3 +393,26 @@ class TestTextModels:
         assert len(op.entries) == 1
         assert op.entries[0].text == "Hello"
         assert op.entries[0].font_size == 72
+
+    def test_text_entry_shadow_stroke_roundtrip(self):
+        entry = TextEntry(
+            text="Styled",
+            shadow_color="black",
+            shadow_offset=3,
+            stroke_color="navy",
+            stroke_width=2,
+        )
+        d = entry.to_dict()
+        assert d["shadow_color"] == "black"
+        assert d["shadow_offset"] == 3
+        assert d["stroke_color"] == "navy"
+        assert d["stroke_width"] == 2
+        restored = TextEntry.from_dict(d)
+        assert restored.shadow_color == "black"
+        assert restored.stroke_color == "navy"
+
+    def test_text_entry_no_shadow_stroke_excludes_fields(self):
+        entry = TextEntry(text="Plain")
+        d = entry.to_dict()
+        assert "shadow_color" not in d
+        assert "stroke_color" not in d

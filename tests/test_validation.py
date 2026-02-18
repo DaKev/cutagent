@@ -323,6 +323,162 @@ class TestInputRefValidation:
         assert result.valid
 
 
+class TestAnimateValidation:
+    """Tests for AnimateOp validation in EDL."""
+
+    def test_valid_animate_edl(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {
+                    "op": "animate", "source": "$input.0", "fps": 30,
+                    "layers": [{
+                        "type": "text", "text": "Hello", "start": 0.0, "end": 3.0,
+                        "properties": {
+                            "opacity": {
+                                "keyframes": [{"t": 0, "value": 0}, {"t": 1, "value": 1}],
+                                "easing": "linear",
+                            },
+                        },
+                    }],
+                },
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+
+    def test_animate_empty_layers(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "animate", "source": "$input.0", "layers": []},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "EMPTY_ANIMATION_LAYERS" in codes
+
+    def test_animate_invalid_layer_type(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {
+                    "op": "animate", "source": "$input.0",
+                    "layers": [{"type": "video", "start": 0, "end": 1, "properties": {}}],
+                },
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_LAYER_TYPE" in codes
+
+    def test_animate_text_layer_missing_text(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {
+                    "op": "animate", "source": "$input.0",
+                    "layers": [{"type": "text", "start": 0, "end": 1, "properties": {}}],
+                },
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "MISSING_LAYER_FIELD" in codes
+
+    def test_animate_image_layer_missing_path(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {
+                    "op": "animate", "source": "$input.0",
+                    "layers": [{"type": "image", "start": 0, "end": 1, "properties": {}}],
+                },
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "MISSING_LAYER_FIELD" in codes
+
+    def test_animate_invalid_property(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {
+                    "op": "animate", "source": "$input.0",
+                    "layers": [{
+                        "type": "text", "text": "Hi", "start": 0, "end": 1,
+                        "properties": {
+                            "scale": {"keyframes": [{"t": 0, "value": 1}], "easing": "linear"},
+                        },
+                    }],
+                },
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_ANIMATION_PROPERTY" in codes
+
+    def test_animate_invalid_easing(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {
+                    "op": "animate", "source": "$input.0",
+                    "layers": [{
+                        "type": "text", "text": "Hi", "start": 0, "end": 1,
+                        "properties": {
+                            "x": {"keyframes": [{"t": 0, "value": 0}], "easing": "bounce"},
+                        },
+                    }],
+                },
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_ANIMATION_EASING" in codes
+
+    def test_animate_preserves_duration(self, test_video):
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
+                {
+                    "op": "animate", "source": "$0",
+                    "layers": [{
+                        "type": "text", "text": "Hi", "start": 0, "end": 3,
+                        "properties": {},
+                    }],
+                },
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+        assert result.estimated_duration == pytest.approx(3.0, abs=0.1)
+
+
 class TestEstimatedDuration:
     """Tests for estimated_duration in validation output."""
 

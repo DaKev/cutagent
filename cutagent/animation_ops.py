@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cutagent.animation import interpolate_expr, EASING_FUNCTIONS
+from cutagent.text_ops import detect_system_font
 from cutagent.errors import (
     CutAgentError,
     MISSING_FIELD,
@@ -131,8 +132,23 @@ def _build_text_filter(layer: AnimationLayer) -> str:
 
     parts.append(f"fontcolor={layer.font_color}")
 
-    if layer.font:
-        parts.append(f"font='{layer.font}'")
+    font = layer.font or detect_system_font()
+    if font:
+        parts.append(f"font='{font}'")
+
+    if layer.bg_color:
+        parts.append("box=1")
+        parts.append(f"boxcolor={layer.bg_color}")
+        parts.append(f"boxborderw={layer.bg_padding}")
+
+    if layer.shadow_color:
+        parts.append(f"shadowcolor={layer.shadow_color}")
+        parts.append(f"shadowx={layer.shadow_offset}")
+        parts.append(f"shadowy={layer.shadow_offset}")
+
+    if layer.stroke_color:
+        parts.append(f"bordercolor={layer.stroke_color}")
+        parts.append(f"borderw={layer.stroke_width}")
 
     # opacity — animated or full
     if "opacity" in layer.properties:

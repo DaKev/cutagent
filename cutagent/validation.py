@@ -21,8 +21,14 @@ from cutagent.models import (
     ReplaceAudioOp,
     NormalizeOp,
     TextOp,
+    AnimateOp,
+    AnimationLayer,
     TextEntry,
     TEXT_POSITIONS,
+    ANIMATION_LAYER_TYPES,
+    ANIMATION_EASINGS,
+    TEXT_ANIMATABLE_PROPS,
+    IMAGE_ANIMATABLE_PROPS,
     parse_time,
     format_time,
 )
@@ -201,6 +207,8 @@ def _validate_operation(
         return _validate_normalize(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
     elif isinstance(op, TextOp):
         return _validate_text(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
+    elif isinstance(op, AnimateOp):
+        return _validate_animate(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs)
     else:
         result.add_error(
             "UNKNOWN_OPERATION",
@@ -559,6 +567,75 @@ def _validate_text(
                 )
 
     # Text preserves duration
+    return _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, inputs or [],
+    )
+
+
+def _validate_animate(
+    op: AnimateOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+) -> Optional[float]:
+    """Validate an animate operation."""
+    _validate_source(op.source, produced, result, input_count)
+
+    if not op.layers:
+        result.add_error(
+            "EMPTY_ANIMATION_LAYERS",
+            f"Op {idx}: no animation layers provided — at least one is required",
+        )
+        return _resolve_source_duration(
+            op.source, file_durations or {}, op_durations or {}, inputs or [],
+        )
+
+    for i, layer in enumerate(op.layers):
+        if layer.type not in ANIMATION_LAYER_TYPES:
+            result.add_error(
+                "INVALID_LAYER_TYPE",
+                f"Op {idx}, layer {i}: invalid type {layer.type!r}",
+            )
+            continue
+
+        if layer.type == "text" and not layer.text:
+            result.add_error(
+                "MISSING_LAYER_FIELD",
+                f"Op {idx}, layer {i}: text layer requires a 'text' field",
+            )
+
+        if layer.type == "image" and not layer.path:
+            result.add_error(
+                "MISSING_LAYER_FIELD",
+                f"Op {idx}, layer {i}: image layer requires a 'path' field",
+            )
+
+        if layer.start >= layer.end:
+            result.add_error(
+                "INVALID_TEXT_TIMING",
+                f"Op {idx}, layer {i}: start ({layer.start}) >= end ({layer.end})",
+            )
+
+        allowed_props = TEXT_ANIMATABLE_PROPS if layer.type == "text" else IMAGE_ANIMATABLE_PROPS
+        for prop_name, prop in layer.properties.items():
+            if prop_name not in allowed_props:
+                result.add_error(
+                    "INVALID_ANIMATION_PROPERTY",
+                    f"Op {idx}, layer {i}: property {prop_name!r} not animatable for {layer.type!r}",
+                )
+            if prop.easing not in ANIMATION_EASINGS:
+                result.add_error(
+                    "INVALID_ANIMATION_EASING",
+                    f"Op {idx}, layer {i}: unknown easing {prop.easing!r}",
+                )
+            if not prop.keyframes:
+                result.add_error(
+                    "MISSING_FIELD",
+                    f"Op {idx}, layer {i}: property {prop_name!r} has no keyframes",
+                )
+
+    # Animate preserves duration
     return _resolve_source_duration(
         op.source, file_durations or {}, op_durations or {}, inputs or [],
     )

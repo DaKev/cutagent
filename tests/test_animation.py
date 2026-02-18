@@ -218,6 +218,42 @@ class TestAnimationModels:
         assert isinstance(op, AnimateOp)
         assert op.source == "test.mp4"
 
+    def test_text_layer_styling_roundtrip(self):
+        layer = AnimationLayer(
+            type="text",
+            text="Styled",
+            start=0.0,
+            end=3.0,
+            bg_color="black@0.5",
+            bg_padding=12,
+            shadow_color="black",
+            shadow_offset=3,
+            stroke_color="navy",
+            stroke_width=2,
+            properties={},
+        )
+        d = layer.to_dict()
+        assert d["bg_color"] == "black@0.5"
+        assert d["bg_padding"] == 12
+        assert d["shadow_color"] == "black"
+        assert d["shadow_offset"] == 3
+        assert d["stroke_color"] == "navy"
+        assert d["stroke_width"] == 2
+        restored = AnimationLayer.from_dict(d)
+        assert restored.bg_color == "black@0.5"
+        assert restored.shadow_color == "black"
+        assert restored.stroke_color == "navy"
+        assert restored.stroke_width == 2
+
+    def test_text_layer_no_styling_excludes_fields(self):
+        layer = AnimationLayer(
+            type="text", text="Plain", start=0.0, end=3.0, properties={},
+        )
+        d = layer.to_dict()
+        assert "bg_color" not in d
+        assert "shadow_color" not in d
+        assert "stroke_color" not in d
+
 
 # ---------------------------------------------------------------------------
 # Validation tests (no FFmpeg needed)
