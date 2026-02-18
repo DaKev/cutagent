@@ -297,19 +297,38 @@ def cmd_capabilities(_args) -> int:
         },
         "time_formats": ["HH:MM:SS", "HH:MM:SS.mmm", "MM:SS", "seconds"],
         "edl_format": {
+            "required_fields": ["version", "inputs", "operations", "output"],
             "version": "1.0",
             "inputs": "list[str] — source file paths",
-            "operations": "list[op] — sequential operations",
+            "operations": "list[op] — sequential operations (each op can have optional 'id' for named references)",
             "output": {"path": "str", "codec": "'copy' | codec_name"},
             "references": {
                 "$input.N": "Reference input file by index (e.g. $input.0 for the first input)",
                 "$N": "Reference output of operation N (e.g. $0 for first operation's result)",
+                "$name": "Reference output of a named operation by its 'id' field (e.g. $trimmed)",
             },
             "edl_input_methods": [
                 "File path: cutagent execute my_edit.json",
                 "Stdin: echo '{...}' | cutagent execute -",
                 "Inline: cutagent execute --edl-json '{...}'",
             ],
+            "minimal_example": {
+                "version": "1.0",
+                "inputs": ["/path/to/input.mp4"],
+                "operations": [
+                    {"op": "trim", "source": "$input.0", "start": "0", "end": "10"},
+                ],
+                "output": {"path": "output.mp4", "codec": "libx264"},
+            },
+            "named_reference_example": {
+                "version": "1.0",
+                "inputs": ["/path/to/input.mp4"],
+                "operations": [
+                    {"op": "trim", "id": "clip", "source": "$input.0", "start": "0", "end": "10"},
+                    {"op": "speed", "source": "$clip", "factor": 2.0},
+                ],
+                "output": {"path": "output.mp4", "codec": "libx264"},
+            },
         },
         "probe_commands": [
             "probe",
@@ -945,8 +964,8 @@ def build_parser() -> argparse.ArgumentParser:
     # thumbnail
     p = sub.add_parser("thumbnail", help="Extract a single thumbnail frame")
     p.add_argument("file", help="Path to the source video")
-    p.add_argument("--at", required=True, help="Thumbnail timestamp")
-    p.add_argument("-o", "--output", required=True, help="Output image path")
+    p.add_argument("--time", "--at", required=True, dest="at", help="Thumbnail timestamp")
+    p.add_argument("--output", "-o", required=True, help="Output image path")
 
     # silence
     p = sub.add_parser("silence", help="Detect silence intervals")
