@@ -14,8 +14,9 @@ CutAgent is designed from the ground up for **AI agents** and **programmatic vid
 - **Declarative EDL**: Describe your edit as a JSON document, execute it in one call
 - **Zero runtime dependencies**: Pure Python + FFmpeg — or `pip install 'cutagent[ffmpeg]'` to bundle everything
 - **Content intelligence**: Scene detection, silence detection, audio levels, keyframe analysis, beat detection
-- **Professional operations**: Trim, split, concat, reorder, extract, fade with crossfade transitions
-- **Audio-aware editing**: Mix background music, adjust volume, replace audio, normalize loudness (EBU R128)
+- **Professional editing**: Trim, split, concat, reorder, extract, fade with crossfade transitions, speed control
+- **Audio polish**: Mix background music, adjust volume, replace audio, normalize loudness (EBU R128)
+- **Text & motion graphics**: Burn-in titles, lower-thirds, annotations, and keyframe-driven animations
 - **Structured errors**: Error codes, recovery hints, and context in every failure response
 
 ## Requirements
@@ -101,54 +102,62 @@ result = execute_edl(edl)
 
 ### CLI (AI-Native — all output is JSON)
 
+**AI agents: start here** — run `cutagent capabilities` to get the full machine-readable schema of all operations, a quality checklist, a phased workflow, and recipe examples for common video editing patterns.
+
 ```bash
-# Discover capabilities (returns machine-readable schema)
+# AI agents: start here — discover all operations, workflow, and recipes
 cutagent capabilities
+```
 
-# Probe a video
-cutagent probe interview.mp4
+#### 1. Analyze
 
-# Get keyframe positions
-cutagent keyframes interview.mp4
+```bash
+cutagent probe interview.mp4                     # Media metadata
+cutagent summarize interview.mp4                  # Full content map (scenes + silence + suggested cuts)
+cutagent scenes interview.mp4 --threshold 0.3     # Scene boundaries
+cutagent silence interview.mp4                    # Silence intervals (dead air, pauses)
+cutagent beats interview.mp4                      # Musical beats (for rhythm-aligned cuts)
+cutagent keyframes interview.mp4                  # Keyframe positions
+cutagent audio-levels interview.mp4               # Audio levels over time
+```
 
-# Detect scene boundaries
-cutagent scenes interview.mp4 --threshold 0.3
+#### 2. Edit
 
-# Build a full content summary (scenes + silence + audio levels)
-cutagent summarize interview.mp4
-
-# Trim
+```bash
 cutagent trim interview.mp4 --start 00:02:15 --end 00:05:40 -o clip.mp4
-
-# Split at multiple points
 cutagent split interview.mp4 --at 00:05:00,00:10:00 --prefix segment
-
-# Concatenate
 cutagent concat clip1.mp4 clip2.mp4 -o merged.mp4
-
-# Extract audio
+cutagent speed interview.mp4 --factor 2.0 -o fast.mp4
 cutagent extract interview.mp4 --stream audio -o audio.aac
+```
 
-# Detect musical beats (for rhythm-aligned cuts)
-cutagent beats interview.mp4
+#### 3. Audio Polish
 
-# Mix background music into a video
-cutagent mix interview.mp4 --audio music.mp3 --mix-level 0.2 -o with_music.mp4
+```bash
+cutagent normalize interview.mp4 -o normalized.mp4                          # EBU R128 loudness
+cutagent mix interview.mp4 --audio music.mp3 --mix-level 0.2 -o with_music.mp4  # Background music
+cutagent volume interview.mp4 --gain-db 6.0 -o louder.mp4                  # Volume adjustment
+cutagent replace-audio interview.mp4 --audio voiceover.mp3 -o replaced.mp4 # Replace audio track
+```
 
-# Adjust audio volume
-cutagent volume interview.mp4 --gain-db 6.0 -o louder.mp4
+#### 4. Visual Polish
 
-# Replace audio track
-cutagent replace-audio interview.mp4 --audio voiceover.mp3 -o replaced.mp4
+```bash
+# Burn-in titles and lower-thirds
+cutagent text interview.mp4 --entries-json '[{"text": "Interview Title", "position": "center", "font_size": 72, "start": "0", "end": "3"}]' -o titled.mp4
 
-# Normalize audio loudness (EBU R128)
-cutagent normalize interview.mp4 -o normalized.mp4
+# Keyframe-driven animations (slide-in, fade-in)
+cutagent animate interview.mp4 --layers-json '[{"type": "text", "text": "Hello", "start": 0, "end": 3, "properties": {"opacity": {"keyframes": [{"t": 0, "value": 0}, {"t": 0.5, "value": 1}]}}}]' -o animated.mp4
 
-# Validate an EDL without executing
-cutagent validate edit.json
+# Fade in/out for polished opening and closing
+cutagent fade interview.mp4 --fade-in 1.0 --fade-out 1.0 -o faded.mp4
+```
 
-# Execute an EDL
-cutagent execute edit.json
+#### EDL and Validation
+
+```bash
+cutagent validate edit.json    # Dry-run validation
+cutagent execute edit.json     # Execute the full edit
 ```
 
 ### EDL Format
@@ -171,7 +180,7 @@ The Edit Decision List is a declarative JSON format for multi-step edits. Operat
 }
 ```
 
-**Available operations:** `trim`, `split`, `concat`, `reorder`, `extract`, `fade`, `speed`, `mix_audio`, `volume`, `replace_audio`, `normalize`
+**Available operations:** `trim`, `split`, `concat`, `reorder`, `extract`, `fade`, `speed`, `mix_audio`, `volume`, `replace_audio`, `normalize`, `text`, `animate`
 
 ## Architecture
 
