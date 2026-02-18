@@ -11,6 +11,26 @@ from typing import Optional
 import pytest
 
 
+def _ffmpeg_has_drawtext() -> bool:
+    ffmpeg_dir = os.environ.get("CUTAGENT_FFMPEG_DIR")
+    from pathlib import Path
+    ffmpeg_bin = str(Path(ffmpeg_dir) / "ffmpeg") if ffmpeg_dir else "ffmpeg"
+    try:
+        result = subprocess.run(
+            [ffmpeg_bin, "-filters"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return "drawtext" in result.stdout
+    except Exception:
+        return False
+
+
+requires_drawtext = pytest.mark.skipif(
+    not _ffmpeg_has_drawtext(),
+    reason="FFmpeg with drawtext filter not available",
+)
+
+
 def _run_cli(*args: str, input_text: Optional[str] = None) -> subprocess.CompletedProcess:
     """Run cutagent CLI as a subprocess and return the result."""
     cmd = [sys.executable, "-m", "cutagent"] + list(args)
@@ -196,6 +216,79 @@ class TestFramesConvenience:
             "frames", test_video,
             "--at", "1", "--count", "3",
             "--output-dir", output_dir,
+        )
+        assert result.returncode != 0
+
+
+@requires_drawtext
+class TestTextReviewTimestamps:
+    """Tests for review_timestamps in text command output."""
+
+    def test_text_output_includes_review_timestamps(self, test_video, output_dir):
+        out = os.path.join(output_dir, "text_review.mp4")
+        entries = json.dumps([
+            {"text": "Title", "start": "0", "end": "3"},
+            {"text": "Subtitle", "start": "2", "end": "4"},
+        ])
+        result = _run_cli("text", test_video, "--entries-json", entries, "-o", out)
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert "review_timestamps" in data
+        assert data["review_timestamps"] == [1.5, 3.0]
+        assert "text_layers" in data
+        assert len(data["text_layers"]) == 2
+
+    def test_animate_output_includes_review_timestamps(self, test_video, output_dir):
+        out = os.path.join(output_dir, "animate_review.mp4")
+        layers = json.dumps([{
+            "type": "text", "text": "Hello", "start": 0.0, "end": 4.0,
+            "properties": {},
+        }])
+        result = _run_cli("animate", test_video, "--layers-json", layers, "-o", out)
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert "review_timestamps" in data
+        assert data["review_timestamps"] == [2.0]
+        assert "text_layers" in data
+
+
+@requires_drawtext
+class TestFileFlags:
+    """Tests for --entries-file and --layers-file CLI flags."""
+
+    def test_text_entries_file(self, test_video, output_dir, tmp_path):
+        out = os.path.join(output_dir, "text_file.mp4")
+        entries_file = str(tmp_path / "entries.json")
+        with open(entries_file, "w") as f:
+            json.dump([{"text": "From File"}], f)
+        result = _run_cli("text", test_video, "--entries-file", entries_file, "-o", out)
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["success"] is True
+
+    def test_animate_layers_file(self, test_video, output_dir, tmp_path):
+        out = os.path.join(output_dir, "animate_file.mp4")
+        layers_file = str(tmp_path / "layers.json")
+        with open(layers_file, "w") as f:
+            json.dump([{
+                "type": "text", "text": "From File",
+                "start": 0.0, "end": 2.0, "properties": {},
+            }], f)
+        result = _run_cli("animate", test_video, "--layers-file", layers_file, "-o", out)
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["success"] is True
+
+    def test_entries_json_and_file_mutually_exclusive(self, test_video, output_dir, tmp_path):
+        out = os.path.join(output_dir, "bad.mp4")
+        entries_file = str(tmp_path / "entries.json")
+        with open(entries_file, "w") as f:
+            json.dump([{"text": "X"}], f)
+        result = _run_cli(
+            "text", test_video,
+            "--entries-json", '[{"text": "Y"}]',
+            "--entries-file", entries_file,
+            "-o", out,
         )
         assert result.returncode != 0
 

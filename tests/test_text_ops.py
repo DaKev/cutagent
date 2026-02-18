@@ -27,8 +27,15 @@ def _ffmpeg_has_drawtext(ffmpeg_bin: str = "ffmpeg") -> bool:
 
 
 def _find_drawtext_ffmpeg() -> str | None:
-    """Find an FFmpeg binary with drawtext support (system or static-ffmpeg)."""
+    """Find an FFmpeg binary with drawtext support."""
     import shutil
+    from pathlib import Path
+    # Honour CUTAGENT_FFMPEG_DIR (used for testing with ffmpeg-full)
+    ffmpeg_dir = os.environ.get("CUTAGENT_FFMPEG_DIR")
+    if ffmpeg_dir:
+        candidate = str(Path(ffmpeg_dir) / "ffmpeg")
+        if _ffmpeg_has_drawtext(candidate):
+            return candidate
     system = shutil.which("ffmpeg")
     if system and _ffmpeg_has_drawtext(system):
         return system
@@ -393,3 +400,26 @@ class TestTextModels:
         assert len(op.entries) == 1
         assert op.entries[0].text == "Hello"
         assert op.entries[0].font_size == 72
+
+    def test_text_entry_shadow_stroke_roundtrip(self):
+        entry = TextEntry(
+            text="Styled",
+            shadow_color="black",
+            shadow_offset=3,
+            stroke_color="navy",
+            stroke_width=2,
+        )
+        d = entry.to_dict()
+        assert d["shadow_color"] == "black"
+        assert d["shadow_offset"] == 3
+        assert d["stroke_color"] == "navy"
+        assert d["stroke_width"] == 2
+        restored = TextEntry.from_dict(d)
+        assert restored.shadow_color == "black"
+        assert restored.stroke_color == "navy"
+
+    def test_text_entry_no_shadow_stroke_excludes_fields(self):
+        entry = TextEntry(text="Plain")
+        d = entry.to_dict()
+        assert "shadow_color" not in d
+        assert "stroke_color" not in d

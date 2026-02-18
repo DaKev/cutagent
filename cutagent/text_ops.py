@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import functools
 import re
+import shutil
+import subprocess
 
 from cutagent.errors import (
     CutAgentError,
@@ -32,6 +35,28 @@ _POSITION_MAP: dict[str, tuple[str, str]] = {
 }
 
 _CUSTOM_POS_RE = re.compile(r"^(\d+)\s*,\s*(\d+)$")
+
+_PREFERRED_FONTS = ["Arial", "Helvetica Neue", "DejaVu Sans", "Liberation Sans"]
+
+
+@functools.lru_cache(maxsize=1)
+def detect_system_font() -> str | None:
+    """Return the first available sans-serif font, or None if none found."""
+    fc_list = shutil.which("fc-list")
+    if not fc_list:
+        return None
+    try:
+        result = subprocess.run(
+            [fc_list, "--format", "%{family}\n"],
+            capture_output=True, text=True, timeout=5,
+        )
+        families = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    except (subprocess.SubprocessError, OSError):
+        return None
+    for font in _PREFERRED_FONTS:
+        if font in families:
+            return font
+    return None
 
 
 def _resolve_position(position: str) -> tuple[str, str]:
@@ -80,13 +105,23 @@ def _build_drawtext_filter(entry: TextEntry) -> str:
         f"y={y_expr}",
     ]
 
-    if entry.font:
-        parts.append(f"font='{entry.font}'")
+    font = entry.font or detect_system_font()
+    if font:
+        parts.append(f"font='{font}'")
 
     if entry.bg_color:
         parts.append("box=1")
         parts.append(f"boxcolor={entry.bg_color}")
         parts.append(f"boxborderw={entry.bg_padding}")
+
+    if entry.shadow_color:
+        parts.append(f"shadowcolor={entry.shadow_color}")
+        parts.append(f"shadowx={entry.shadow_offset}")
+        parts.append(f"shadowy={entry.shadow_offset}")
+
+    if entry.stroke_color:
+        parts.append(f"bordercolor={entry.stroke_color}")
+        parts.append(f"borderw={entry.stroke_width}")
 
     # Timed display via enable='between(t,start,end)'
     if entry.start is not None or entry.end is not None:

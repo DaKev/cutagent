@@ -218,6 +218,42 @@ class TestAnimationModels:
         assert isinstance(op, AnimateOp)
         assert op.source == "test.mp4"
 
+    def test_text_layer_styling_roundtrip(self):
+        layer = AnimationLayer(
+            type="text",
+            text="Styled",
+            start=0.0,
+            end=3.0,
+            bg_color="black@0.5",
+            bg_padding=12,
+            shadow_color="black",
+            shadow_offset=3,
+            stroke_color="navy",
+            stroke_width=2,
+            properties={},
+        )
+        d = layer.to_dict()
+        assert d["bg_color"] == "black@0.5"
+        assert d["bg_padding"] == 12
+        assert d["shadow_color"] == "black"
+        assert d["shadow_offset"] == 3
+        assert d["stroke_color"] == "navy"
+        assert d["stroke_width"] == 2
+        restored = AnimationLayer.from_dict(d)
+        assert restored.bg_color == "black@0.5"
+        assert restored.shadow_color == "black"
+        assert restored.stroke_color == "navy"
+        assert restored.stroke_width == 2
+
+    def test_text_layer_no_styling_excludes_fields(self):
+        layer = AnimationLayer(
+            type="text", text="Plain", start=0.0, end=3.0, properties={},
+        )
+        d = layer.to_dict()
+        assert "bg_color" not in d
+        assert "shadow_color" not in d
+        assert "stroke_color" not in d
+
 
 # ---------------------------------------------------------------------------
 # Validation tests (no FFmpeg needed)
@@ -354,10 +390,54 @@ def _ffmpeg_has_drawtext(ffmpeg_bin: str = "ffmpeg") -> bool:
         return False
 
 
+def _find_drawtext_ffmpeg() -> str | None:
+    """Find an FFmpeg binary with drawtext support."""
+    import shutil
+    from pathlib import Path
+    ffmpeg_dir = os.environ.get("CUTAGENT_FFMPEG_DIR")
+    if ffmpeg_dir:
+        candidate = str(Path(ffmpeg_dir) / "ffmpeg")
+        if _ffmpeg_has_drawtext(candidate):
+            return candidate
+    system = shutil.which("ffmpeg")
+    if system and _ffmpeg_has_drawtext(system):
+        return system
+    try:
+        from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise
+        ffmpeg_path, _ = get_or_fetch_platform_executables_else_raise()
+        if _ffmpeg_has_drawtext(ffmpeg_path):
+            return ffmpeg_path
+    except Exception:
+        pass
+    return None
+
+
+_drawtext_ffmpeg = _find_drawtext_ffmpeg()
+
 requires_drawtext = pytest.mark.skipif(
-    not _ffmpeg_has_drawtext(),
+    _drawtext_ffmpeg is None,
     reason="FFmpeg with drawtext filter not available",
 )
+
+
+@pytest.fixture(autouse=True)
+def _use_drawtext_ffmpeg_animation():
+    """Ensure animation integration tests use an FFmpeg with drawtext support."""
+    if _drawtext_ffmpeg is None:
+        yield
+        return
+    from cutagent.ffmpeg import reset_cache
+    old = os.environ.get("CUTAGENT_FFMPEG")
+    os.environ["CUTAGENT_FFMPEG"] = _drawtext_ffmpeg
+    reset_cache()
+    try:
+        yield
+    finally:
+        if old is None:
+            os.environ.pop("CUTAGENT_FFMPEG", None)
+        else:
+            os.environ["CUTAGENT_FFMPEG"] = old
+        reset_cache()
 
 
 @requires_drawtext

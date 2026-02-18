@@ -496,6 +496,10 @@ class TextEntry:
     bg_color: Optional[str] = None
     bg_padding: int = 10
     font: Optional[str] = None
+    shadow_color: Optional[str] = None
+    shadow_offset: int = 0
+    stroke_color: Optional[str] = None
+    stroke_width: int = 0
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -580,6 +584,12 @@ class AnimationLayer:
     font_size: int = 48
     font_color: str = "white"
     font: Optional[str] = None
+    bg_color: Optional[str] = None
+    bg_padding: int = 10
+    shadow_color: Optional[str] = None
+    shadow_offset: int = 0
+    stroke_color: Optional[str] = None
+    stroke_width: int = 0
     # Image-specific fields
     path: Optional[str] = None
 
@@ -596,6 +606,15 @@ class AnimationLayer:
             d["font_color"] = self.font_color
             if self.font:
                 d["font"] = self.font
+            if self.bg_color:
+                d["bg_color"] = self.bg_color
+                d["bg_padding"] = self.bg_padding
+            if self.shadow_color:
+                d["shadow_color"] = self.shadow_color
+                d["shadow_offset"] = self.shadow_offset
+            if self.stroke_color:
+                d["stroke_color"] = self.stroke_color
+                d["stroke_width"] = self.stroke_width
         elif self.type == "image":
             d["path"] = self.path
         return d
@@ -615,6 +634,12 @@ class AnimationLayer:
             font_size=int(data.get("font_size", 48)),
             font_color=data.get("font_color", "white"),
             font=data.get("font"),
+            bg_color=data.get("bg_color"),
+            bg_padding=int(data.get("bg_padding", 10)),
+            shadow_color=data.get("shadow_color"),
+            shadow_offset=int(data.get("shadow_offset", 0)),
+            stroke_color=data.get("stroke_color"),
+            stroke_width=int(data.get("stroke_width", 0)),
             path=data.get("path"),
         )
 

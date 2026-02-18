@@ -21,6 +21,62 @@ def _json_error(exc: CutAgentError, exit_code: int = EXIT_EXECUTION) -> int:
     return _json_out(exc.to_dict(), exit_code)
 
 
+def _read_json_arg(args, json_attr: str, file_attr: str) -> str:
+    """Read JSON from either inline --*-json or --*-file argument."""
+    inline = getattr(args, json_attr, None)
+    if inline is not None:
+        return inline
+    file_path = getattr(args, file_attr, None)
+    if file_path is not None:
+        return Path(file_path).read_text()
+    raise CutAgentError(
+        code="MISSING_FIELD",
+        message=f"Either --{json_attr.replace('_', '-')} or --{file_attr.replace('_', '-')} is required",
+        recovery=[f"Provide one of --{json_attr.replace('_', '-')} or --{file_attr.replace('_', '-')}"],
+    )
+
+
+def _review_timestamps_from_entries(entries) -> list[float]:
+    """Compute midpoint timestamps for visual review of text entries."""
+    from cutagent.models import parse_time
+    timestamps = []
+    for entry in entries:
+        start = parse_time(entry.start) if entry.start else 0.0
+        end = parse_time(entry.end) if entry.end else start + 5.0
+        timestamps.append(round((start + end) / 2, 3))
+    return timestamps
+
+
+def _text_layer_summary(entries) -> list[dict]:
+    """Build a concise layer summary from TextEntry objects."""
+    from cutagent.models import parse_time
+    summary = []
+    for entry in entries:
+        start = parse_time(entry.start) if entry.start else 0.0
+        end = parse_time(entry.end) if entry.end else None
+        d: dict = {"text": entry.text, "start": start}
+        if end is not None:
+            d["end"] = end
+        summary.append(d)
+    return summary
+
+
+def _review_timestamps_from_layers(layers) -> list[float]:
+    """Compute midpoint timestamps for visual review of animation layers."""
+    return [round((layer.start + layer.end) / 2, 3) for layer in layers]
+
+
+def _animate_layer_summary(layers) -> list[dict]:
+    """Build a concise layer summary from AnimationLayer objects."""
+    summary = []
+    for layer in layers:
+        d: dict = {"type": layer.type, "start": layer.start, "end": layer.end}
+        if layer.type == "text" and layer.text:
+            d["text"] = layer.text
+        summary.append(d)
+    return summary
+
+
 # ---------------------------------------------------------------------------
 # Command handlers
 # ---------------------------------------------------------------------------
@@ -34,11 +90,13 @@ def cmd_capabilities(_args) -> int:
                 "description": "Extract a segment between two timestamps",
                 "fields": {"op": "'trim'", "source": "str", "start": "time", "end": "time"},
                 "supports_copy_codec": True,
+                "edl_compatible": True,
             },
             "split": {
                 "description": "Split a video at one or more timestamps",
                 "fields": {"op": "'split'", "source": "str", "points": "list[time]"},
                 "supports_copy_codec": True,
+                "edl_compatible": True,
             },
             "concat": {
                 "description": "Concatenate multiple files in order",
@@ -49,16 +107,19 @@ def cmd_capabilities(_args) -> int:
                     "transition_duration": "float (>0)",
                 },
                 "supports_copy_codec": True,
+                "edl_compatible": True,
             },
             "reorder": {
                 "description": "Reorder segments by index and concatenate",
                 "fields": {"op": "'reorder'", "segments": "list[str]", "order": "list[int]"},
                 "supports_copy_codec": True,
+                "edl_compatible": True,
             },
             "extract": {
                 "description": "Extract audio or video stream",
                 "fields": {"op": "'extract'", "source": "str", "stream": "'audio' | 'video'"},
                 "supports_copy_codec": True,
+                "edl_compatible": True,
             },
             "fade": {
                 "description": "Apply fade-in/fade-out to audio and video",
@@ -69,6 +130,7 @@ def cmd_capabilities(_args) -> int:
                     "fade_out": "float (seconds)",
                 },
                 "supports_copy_codec": False,
+                "edl_compatible": True,
             },
             "speed": {
                 "description": "Change playback speed (slow-motion or speed-up)",
@@ -78,6 +140,7 @@ def cmd_capabilities(_args) -> int:
                     "factor": "float (0.25–100.0; >1 = faster, <1 = slower)",
                 },
                 "supports_copy_codec": False,
+                "edl_compatible": True,
             },
             "mix_audio": {
                 "description": "Overlay background music or audio onto a video's existing audio",
@@ -88,6 +151,7 @@ def cmd_capabilities(_args) -> int:
                     "mix_level": "float (0.0–1.0, default 0.3)",
                 },
                 "supports_copy_codec": False,
+                "edl_compatible": True,
             },
             "volume": {
                 "description": "Adjust audio volume by a dB gain value",
@@ -97,6 +161,7 @@ def cmd_capabilities(_args) -> int:
                     "gain_db": "float (-60.0 to 60.0; positive = louder)",
                 },
                 "supports_copy_codec": True,
+                "edl_compatible": True,
             },
             "replace_audio": {
                 "description": "Replace a video's audio track with a different audio file",
@@ -106,6 +171,7 @@ def cmd_capabilities(_args) -> int:
                     "audio": "str (replacement audio file)",
                 },
                 "supports_copy_codec": True,
+                "edl_compatible": True,
             },
             "normalize": {
                 "description": "Normalize audio loudness using EBU R128 (loudnorm)",
@@ -116,6 +182,7 @@ def cmd_capabilities(_args) -> int:
                     "true_peak_dbtp": "float (default -1.5, range -10 to 0)",
                 },
                 "supports_copy_codec": False,
+                "edl_compatible": True,
             },
             "text": {
                 "description": "Burn text overlays, titles, descriptions, or annotations onto a video",
@@ -134,9 +201,14 @@ def cmd_capabilities(_args) -> int:
                     "end": "time (optional — when text disappears)",
                     "bg_color": "str (optional — e.g. 'black@0.5' for semi-transparent background)",
                     "bg_padding": "int (default 10 — padding around text when bg_color is set)",
-                    "font": "str (optional — font family name)",
+                    "font": "str (optional — font family name; auto-detects system sans-serif if omitted)",
+                    "shadow_color": "str (optional — e.g. 'black' for drop shadow behind text)",
+                    "shadow_offset": "int (default 0 — pixel offset for shadow in both x and y)",
+                    "stroke_color": "str (optional — e.g. 'black' for text outline/border)",
+                    "stroke_width": "int (default 0 — pixel width of text outline)",
                 },
                 "supports_copy_codec": False,
+                "edl_compatible": True,
             },
             "animate": {
                 "description": "Apply keyframe-driven animations (text/image layers) onto a video — Remotion-style declarative motion",
@@ -154,18 +226,26 @@ def cmd_capabilities(_args) -> int:
                     "text": "str (required for text layers)",
                     "font_size": "int (default 48, for text layers)",
                     "font_color": "str (default 'white', for text layers)",
-                    "font": "str (optional, for text layers)",
+                    "font": "str (optional, for text layers; auto-detects system sans-serif if omitted)",
+                    "bg_color": "str (optional — e.g. 'black@0.5' for semi-transparent background box)",
+                    "bg_padding": "int (default 10 — padding around text when bg_color is set)",
+                    "shadow_color": "str (optional — e.g. 'black' for drop shadow behind text)",
+                    "shadow_offset": "int (default 0 — pixel offset for shadow in both x and y)",
+                    "stroke_color": "str (optional — e.g. 'black' for text outline/border)",
+                    "stroke_width": "int (default 0 — pixel width of text outline)",
                     "path": "str (required for image layers — path to image file)",
                 },
                 "property_fields": {
                     "keyframes": "list[{t: float, value: float}] — time/value pairs",
                     "easing": "str (default 'linear'; options: linear, ease-in, ease-out, ease-in-out, spring)",
                 },
+                "keyframe_t_note": "t is absolute timeline time in seconds, not relative to layer start",
                 "animatable_properties": {
                     "text": ["x", "y", "opacity", "font_size"],
                     "image": ["x", "y", "opacity", "scale"],
                 },
                 "supports_copy_codec": False,
+                "edl_compatible": True,
             },
         },
         "operation_examples": {
@@ -205,6 +285,7 @@ def cmd_capabilities(_args) -> int:
                     {
                         "type": "text", "text": "Hello World",
                         "font_size": 48, "font_color": "white",
+                        "bg_color": "black@0.5", "bg_padding": 12,
                         "start": 0.0, "end": 3.0,
                         "properties": {
                             "x": {"keyframes": [{"t": 0.0, "value": -200}, {"t": 1.0, "value": 100}], "easing": "ease-out"},
@@ -253,7 +334,8 @@ def cmd_capabilities(_args) -> int:
             "8. Use 'crossfade' transition in concat for smooth audio between clips",
             "9. Apply 'fade' (fade_in/fade_out) for polished opening and closing",
             "10. Use 'text' to add titles, lower thirds, or annotations with timed display",
-            "11. Execute via EDL for multi-step edits with $N references",
+            "11. After text/animate, extract frames at review_timestamps from the output to visually verify overlays",
+            "12. Execute via EDL for multi-step edits with $N references",
         ],
         "progress_output": {
             "description": "During 'execute', progress is emitted as JSONL on stderr",
@@ -279,6 +361,9 @@ def cmd_capabilities(_args) -> int:
             "Use 'mix_audio' with mix_level 0.1–0.2 for subtle background music",
             "Use 'beats' to detect rhythm — cut on beats for music-driven edits",
             "Use 'volume' to boost quiet clips or reduce loud ones (gain_db in dB)",
+            "Use --entries-file / --layers-file to read JSON from a file instead of inline",
+            "text and animate output includes review_timestamps — use with 'frames --at' to verify overlays",
+            "Use bg_color + shadow_color on animate text layers for readable lower-thirds",
         ],
     }
     return _json_out(caps)
@@ -640,9 +725,10 @@ def cmd_text(args) -> int:
     """Burn text overlays onto a video."""
     import json as _json
     from cutagent.text_ops import add_text
-    from cutagent.models import TextEntry
+    from cutagent.models import TextEntry, parse_time
     try:
-        entries_raw = _json.loads(args.entries_json)
+        raw_json = _read_json_arg(args, "entries_json", "entries_file")
+        entries_raw = _json.loads(raw_json)
         if isinstance(entries_raw, dict):
             entries_raw = [entries_raw]
         entries = [TextEntry.from_dict(e) for e in entries_raw]
@@ -650,7 +736,10 @@ def cmd_text(args) -> int:
             args.file, entries, args.output,
             codec=args.codec,
         )
-        return _json_out(result.to_dict())
+        out = result.to_dict()
+        out["text_layers"] = _text_layer_summary(entries)
+        out["review_timestamps"] = _review_timestamps_from_entries(entries)
+        return _json_out(out)
     except CutAgentError as exc:
         return _json_error(exc)
     except (_json.JSONDecodeError, KeyError, TypeError) as exc:
@@ -672,7 +761,8 @@ def cmd_animate(args) -> int:
     from cutagent.animation_ops import animate
     from cutagent.models import AnimationLayer
     try:
-        layers_raw = _json.loads(args.layers_json)
+        raw_json = _read_json_arg(args, "layers_json", "layers_file")
+        layers_raw = _json.loads(raw_json)
         if isinstance(layers_raw, dict):
             layers_raw = [layers_raw]
         layers = [AnimationLayer.from_dict(l) for l in layers_raw]
@@ -681,7 +771,10 @@ def cmd_animate(args) -> int:
             fps=args.fps,
             codec=args.codec,
         )
-        return _json_out(result.to_dict())
+        out = result.to_dict()
+        out["text_layers"] = _animate_layer_summary(layers)
+        out["review_timestamps"] = _review_timestamps_from_layers(layers)
+        return _json_out(out)
     except CutAgentError as exc:
         return _json_error(exc)
     except (_json.JSONDecodeError, KeyError, TypeError) as exc:
@@ -958,16 +1051,22 @@ def build_parser() -> argparse.ArgumentParser:
     # text
     p = sub.add_parser("text", help="Burn text overlays onto a video")
     p.add_argument("file", help="Path to the source video")
-    p.add_argument("--entries-json", required=True,
-                   help="JSON array of text entries (or a single entry object)")
+    eg = p.add_mutually_exclusive_group(required=True)
+    eg.add_argument("--entries-json",
+                    help="JSON array of text entries (or a single entry object)")
+    eg.add_argument("--entries-file",
+                    help="Path to a JSON file containing text entries")
     p.add_argument("-o", "--output", required=True, help="Output file path")
     p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
 
     # animate
     p = sub.add_parser("animate", help="Apply keyframe-driven animations onto a video")
     p.add_argument("file", help="Path to the source video")
-    p.add_argument("--layers-json", required=True,
-                   help="JSON array of animation layer objects (or a single layer object)")
+    lg = p.add_mutually_exclusive_group(required=True)
+    lg.add_argument("--layers-json",
+                    help="JSON array of animation layer objects (or a single layer object)")
+    lg.add_argument("--layers-file",
+                    help="Path to a JSON file containing animation layers")
     p.add_argument("-o", "--output", required=True, help="Output file path")
     p.add_argument("--fps", type=int, default=30, help="Output frame rate (default: 30)")
     p.add_argument("--codec", default="libx264", help="Video codec (default: libx264)")
