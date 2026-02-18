@@ -19,6 +19,33 @@ from cutagent.errors import (
 
 DEFAULT_TIMEOUT = 300  # 5 minutes
 
+
+def _ffmpeg_recovery_hints(stderr: str) -> list[str]:
+    """Generate context-aware recovery hints from ffmpeg stderr."""
+    if "No such filter" in stderr:
+        return [
+            "A required ffmpeg filter is missing from your build (e.g. drawtext needs libfreetype)",
+            "Set CUTAGENT_FFMPEG to a ffmpeg binary with the needed filters",
+            "Run 'cutagent doctor' to inspect your ffmpeg capabilities",
+        ]
+    stderr_lower = stderr.lower()
+    if "codec not found" in stderr_lower or "unknown encoder" in stderr_lower:
+        return [
+            "The required codec is not available in your ffmpeg build",
+            "Set CUTAGENT_FFMPEG to a ffmpeg binary with the needed codec, or run 'cutagent doctor'",
+        ]
+    if "no such file" in stderr_lower or "does not exist" in stderr_lower:
+        return [
+            "A referenced file could not be found",
+            "Verify all input file paths are correct and accessible",
+        ]
+    if "permission denied" in stderr_lower:
+        return [
+            "Permission denied when accessing a file",
+            "Check file permissions for input and output paths",
+        ]
+    return ["Check stderr for details", "Verify input file is a valid media file"]
+
 # Module-level cache — discovery runs once per process
 _cached_ffmpeg: str | None = None
 _cached_ffprobe: str | None = None
@@ -208,14 +235,15 @@ def run_ffmpeg(
         ) from exc
 
     if check and result.returncode != 0:
+        stderr_tail = result.stderr[-2000:] if result.stderr else ""
         raise CutAgentError(
             code=FFMPEG_FAILED,
             message=f"ffmpeg exited with code {result.returncode}",
-            recovery=["Check stderr for details", "Verify input file is a valid media file"],
+            recovery=_ffmpeg_recovery_hints(stderr_tail),
             context={
                 "command": cmd,
                 "returncode": result.returncode,
-                "stderr": result.stderr[-2000:] if result.stderr else "",
+                "stderr": stderr_tail,
             },
         )
 

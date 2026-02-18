@@ -56,13 +56,21 @@ def trim(
     info = probe_file(source)
     warnings: list[str] = []
 
+    _TRIM_BOUNDARY_TOLERANCE = 0.05
     if end_sec > info.duration:
-        raise CutAgentError(
-            code=TRIM_BEYOND_DURATION,
-            message=f"End time {end} ({end_sec:.3f}s) exceeds duration ({info.duration:.3f}s)",
-            recovery=recovery_hints(TRIM_BEYOND_DURATION, {"duration": info.duration}),
-            context={"source": source, "duration": info.duration, "end": end},
-        )
+        if end_sec - info.duration <= _TRIM_BOUNDARY_TOLERANCE:
+            warnings.append(
+                f"End time {end} ({end_sec:.3f}s) slightly exceeds duration "
+                f"({info.duration:.3f}s) — clamped to duration"
+            )
+            end_sec = info.duration
+        else:
+            raise CutAgentError(
+                code=TRIM_BEYOND_DURATION,
+                message=f"End time {end} ({end_sec:.3f}s) exceeds duration ({info.duration:.3f}s)",
+                recovery=recovery_hints(TRIM_BEYOND_DURATION, {"duration": info.duration}),
+                context={"source": source, "duration": info.duration, "end": end},
+            )
 
     # Warn about non-keyframe cut points when using copy codec
     if codec == "copy":

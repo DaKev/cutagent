@@ -286,33 +286,42 @@ class TrimOp:
     source: str
     start: str
     end: str
+    id: Optional[str] = None
     op: str = "trim"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> TrimOp:
-        return cls(source=data["source"], start=data["start"], end=data["end"])
+        return cls(source=data["source"], start=data["start"], end=data["end"], id=data.get("id"))
 
 
 @dataclass
 class SplitOp:
     source: str
     points: list[str]
+    id: Optional[str] = None
     op: str = "split"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> SplitOp:
-        return cls(source=data["source"], points=data["points"])
+        return cls(source=data["source"], points=data["points"], id=data.get("id"))
 
 
 @dataclass
 class ConcatOp:
     segments: list[str]
+    id: Optional[str] = None
     transition: Optional[str] = None
     transition_duration: Optional[float] = None
     op: str = "concat"
@@ -325,6 +334,7 @@ class ConcatOp:
     def from_dict(cls, data: dict) -> ConcatOp:
         return cls(
             segments=data["segments"],
+            id=data.get("id"),
             transition=data.get("transition"),
             transition_duration=data.get("transition_duration"),
         )
@@ -334,33 +344,42 @@ class ConcatOp:
 class ReorderOp:
     segments: list[str]
     order: list[int]
+    id: Optional[str] = None
     op: str = "reorder"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> ReorderOp:
-        return cls(segments=data["segments"], order=data["order"])
+        return cls(segments=data["segments"], order=data["order"], id=data.get("id"))
 
 
 @dataclass
 class ExtractOp:
     source: str
     stream: str  # "audio" or "video"
+    id: Optional[str] = None
     op: str = "extract"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> ExtractOp:
-        return cls(source=data["source"], stream=data["stream"])
+        return cls(source=data["source"], stream=data["stream"], id=data.get("id"))
 
 
 @dataclass
 class FadeOp:
     source: str
+    id: Optional[str] = None
     output: Optional[str] = None
     fade_in: float = 0.0
     fade_out: float = 0.0
@@ -374,6 +393,7 @@ class FadeOp:
     def from_dict(cls, data: dict) -> FadeOp:
         return cls(
             source=data["source"],
+            id=data.get("id"),
             output=data.get("output"),
             fade_in=float(data.get("fade_in", 0.0)),
             fade_out=float(data.get("fade_out", 0.0)),
@@ -383,16 +403,21 @@ class FadeOp:
 @dataclass
 class SpeedOp:
     source: str
+    id: Optional[str] = None
     factor: float = 1.0
     op: str = "speed"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> SpeedOp:
         return cls(
             source=data["source"],
+            id=data.get("id"),
             factor=float(data.get("factor", 1.0)),
         )
 
@@ -402,17 +427,22 @@ class MixAudioOp:
     """Mix an external audio track into a video's existing audio."""
     source: str
     audio: str
+    id: Optional[str] = None
     mix_level: float = 0.3
     op: str = "mix_audio"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> MixAudioOp:
         return cls(
             source=data["source"],
             audio=data["audio"],
+            id=data.get("id"),
             mix_level=float(data.get("mix_level", 0.3)),
         )
 
@@ -421,16 +451,21 @@ class MixAudioOp:
 class VolumeOp:
     """Adjust audio volume by a gain value in dB."""
     source: str
+    id: Optional[str] = None
     gain_db: float = 0.0
     op: str = "volume"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> VolumeOp:
         return cls(
             source=data["source"],
+            id=data.get("id"),
             gain_db=float(data.get("gain_db", 0.0)),
         )
 
@@ -440,16 +475,21 @@ class ReplaceAudioOp:
     """Replace a video's audio track with an external audio file."""
     source: str
     audio: str
+    id: Optional[str] = None
     op: str = "replace_audio"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> ReplaceAudioOp:
         return cls(
             source=data["source"],
             audio=data["audio"],
+            id=data.get("id"),
         )
 
 
@@ -457,17 +497,22 @@ class ReplaceAudioOp:
 class NormalizeOp:
     """Normalize audio loudness using EBU R128 loudnorm."""
     source: str
+    id: Optional[str] = None
     target_lufs: float = -16.0
     true_peak_dbtp: float = -1.5
     op: str = "normalize"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> NormalizeOp:
         return cls(
             source=data["source"],
+            id=data.get("id"),
             target_lufs=float(data.get("target_lufs", -16.0)),
             true_peak_dbtp=float(data.get("true_peak_dbtp", -1.5)),
         )
@@ -514,20 +559,24 @@ class TextEntry:
 class TextOp:
     """Burn one or more text overlays onto a video."""
     source: str
+    id: Optional[str] = None
     entries: list[TextEntry] = field(default_factory=list)
     op: str = "text"
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "op": self.op,
             "source": self.source,
             "entries": [e.to_dict() for e in self.entries],
         }
+        if self.id is not None:
+            d["id"] = self.id
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> TextOp:
         entries = [TextEntry.from_dict(e) for e in data.get("entries", [])]
-        return cls(source=data["source"], entries=entries)
+        return cls(source=data["source"], id=data.get("id"), entries=entries)
 
 
 # ---------------------------------------------------------------------------
@@ -648,23 +697,28 @@ class AnimationLayer:
 class AnimateOp:
     """Apply keyframe-driven animations (text/image layers) onto a video."""
     source: str
+    id: Optional[str] = None
     layers: list[AnimationLayer] = field(default_factory=list)
     fps: int = 30
     op: str = "animate"
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "op": self.op,
             "source": self.source,
             "fps": self.fps,
             "layers": [layer.to_dict() for layer in self.layers],
         }
+        if self.id is not None:
+            d["id"] = self.id
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> AnimateOp:
         layers = [AnimationLayer.from_dict(l) for l in data.get("layers", [])]
         return cls(
             source=data["source"],
+            id=data.get("id"),
             layers=layers,
             fps=int(data.get("fps", 30)),
         )

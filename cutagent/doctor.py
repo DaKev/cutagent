@@ -116,6 +116,65 @@ def _check_env_vars() -> dict:
     return {k: os.environ.get(k) for k in keys}
 
 
+_IMPORTANT_FILTERS = ["drawtext", "subtitles", "overlay", "scale"]
+
+
+def _check_ffmpeg_filters(ffmpeg_path: str | None) -> dict:
+    """Check which important ffmpeg filters are available."""
+    if not ffmpeg_path:
+        return {"checked": False, "available": {}, "missing": _IMPORTANT_FILTERS}
+    try:
+        result = subprocess.run(
+            [ffmpeg_path, "-filters"],
+            capture_output=True, text=True, timeout=10,
+        )
+        output = result.stdout
+        available: dict[str, bool] = {}
+        for f in _IMPORTANT_FILTERS:
+            available[f] = any(
+                f == line.split()[1]
+                for line in output.splitlines()
+                if len(line.split()) >= 2
+            )
+        missing = [f for f, ok in available.items() if not ok]
+        return {"checked": True, "available": available, "missing": missing}
+    except Exception:
+        return {"checked": False, "available": {}, "missing": _IMPORTANT_FILTERS}
+
+
+def _check_shebang() -> dict:
+    """Check if the cutagent script has a valid interpreter in its shebang."""
+    script_path = shutil.which("cutagent")
+    if not script_path:
+        return {
+            "ok": None,
+            "detail": "cutagent not found on PATH — cannot check shebang",
+        }
+    try:
+        with open(script_path, "rb") as f:
+            first_line = f.readline(256)
+        if not first_line.startswith(b"#!"):
+            return {"ok": True, "detail": "No shebang (binary entry point)", "path": script_path}
+        shebang = first_line[2:].decode("utf-8", errors="replace").strip()
+        parts = shebang.split()
+        interpreter = parts[-1] if parts else shebang
+        if Path(interpreter).exists():
+            return {"ok": True, "detail": shebang, "path": script_path, "interpreter": interpreter}
+        return {
+            "ok": False,
+            "detail": f"Shebang interpreter not found: {interpreter}",
+            "path": script_path,
+            "interpreter": interpreter,
+            "recovery": [
+                "Reinstall cutagent: pip install --force-reinstall cutagent",
+                "Or use pipx: pipx install cutagent",
+                "This often happens after upgrading Python",
+            ],
+        }
+    except Exception as exc:
+        return {"ok": None, "detail": f"Could not read script: {exc}", "path": script_path}
+
+
 def run_doctor() -> dict:
     """Run all diagnostic checks and return a structured report."""
     ffmpeg_info = _check_binary("ffmpeg")
@@ -146,6 +205,22 @@ def run_doctor() -> dict:
         "name": "versions_match",
         "ok": versions_match if versions_match is not None else None,
         "detail": {"ffmpeg": ffmpeg_info["version"], "ffprobe": ffprobe_info["version"]},
+    })
+
+    # ffmpeg filters
+    filter_info = _check_ffmpeg_filters(ffmpeg_info.get("path"))
+    checks.append({
+        "name": "ffmpeg_filters",
+        "ok": len(filter_info["missing"]) == 0 if filter_info["checked"] else None,
+        "detail": filter_info,
+    })
+
+    # Shebang
+    shebang_info = _check_shebang()
+    checks.append({
+        "name": "shebang",
+        "ok": shebang_info.get("ok"),
+        "detail": shebang_info,
     })
 
     # Packages
