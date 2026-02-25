@@ -69,8 +69,8 @@ def _use_drawtext_ffmpeg_cli():
 
 def _run_cli(*args: str, input_text: Optional[str] = None) -> subprocess.CompletedProcess[str]:
     """Run cutagent CLI as a subprocess and return the result."""
-    # Using uv run to make sure it picks up the virtual environment
-    cmd = ["uv", "run", "python", "-m", "cutagent"] + list(args)
+    import sys
+    cmd = [sys.executable, "-m", "cutagent"] + list(args)
     return subprocess.run(
         cmd,
         capture_output=True,
