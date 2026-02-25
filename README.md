@@ -173,6 +173,106 @@ The Edit Decision List is a declarative JSON format for multi-step edits. Operat
 
 **Available operations:** `trim`, `split`, `concat`, `reorder`, `extract`, `fade`, `speed`, `mix_audio`, `volume`, `replace_audio`, `normalize`
 
+## Screen Recording Pipeline
+
+CutAgent doesn't capture screens — FFmpeg (its underlying engine) handles that part. Capture with FFmpeg, then immediately hand the file to CutAgent for post-production.
+
+### Step 1: Record your screen with FFmpeg
+
+**macOS (avfoundation)**
+
+```bash
+# List available devices first
+ffmpeg -f avfoundation -list_devices true -i ""
+
+# Record screen (device index 1) with system audio (device index 0)
+ffmpeg -f avfoundation -i "1:0" -t 300 screen.mp4
+```
+
+**Linux (x11grab)**
+
+```bash
+# Full-screen capture at 1920×1080
+ffmpeg -f x11grab -s 1920x1080 -r 30 -i :0.0 -t 300 screen.mp4
+```
+
+**Windows (gdigrab)**
+
+```bash
+# Full desktop capture
+ffmpeg -f gdigrab -framerate 30 -i desktop -t 300 screen.mp4
+```
+
+### Step 2: Post-process with CutAgent
+
+After recording, the typical cleanup steps are silence detection (to find dead air at the start/end or during pauses), trimming, and audio normalization.
+
+```bash
+# Inspect the recording
+cutagent probe screen.mp4
+
+# Find silence intervals (dead air, pauses)
+cutagent silence screen.mp4 --threshold -35 --min-duration 0.5
+
+# Get a full content map (scenes + silence + suggested cuts)
+cutagent summarize screen.mp4
+
+# Trim to the content window (remove intro/outro dead air)
+cutagent trim screen.mp4 --start 00:00:02.1 --end 00:08:43.7 -o content.mp4
+
+# Normalize audio loudness for streaming/sharing
+cutagent normalize content.mp4 -o final.mp4
+```
+
+### Python pipeline example
+
+This example auto-detects silence boundaries and builds the full post-processing pipeline programmatically:
+
+```python
+from cutagent import probe, detect_silence, execute_edl
+from cutagent.models import format_time
+
+recording = "screen.mp4"
+
+# Detect intro/outro silence
+silences = detect_silence(recording, threshold=-35.0, min_duration=0.5)
+
+# Derive content window from first and last silence boundary
+content_start = format_time(silences[0].end) if silences else "0"
+content_end = format_time(silences[-1].start) if len(silences) >= 2 else format_time(probe(recording).duration)
+
+# Build and execute the EDL: trim dead air → normalize audio
+edl = {
+    "version": "1.0",
+    "inputs": [recording],
+    "operations": [
+        {"op": "trim", "source": "$input.0", "start": content_start, "end": content_end},
+        {"op": "normalize", "source": "$0", "target_lufs": -16.0},
+    ],
+    "output": {"path": "final.mp4", "codec": "libx264"},
+}
+
+result = execute_edl(edl)
+print(result.to_dict())
+```
+
+### EDL example — screen recording workflow
+
+```json
+{
+  "version": "1.0",
+  "inputs": ["screen.mp4"],
+  "operations": [
+    {"op": "trim",      "source": "$input.0", "start": "00:00:02.1", "end": "00:08:43.7"},
+    {"op": "normalize", "source": "$0",       "target_lufs": -16.0},
+    {"op": "text",      "source": "$1",
+     "entries": [{"text": "Demo", "position": "bottom-right", "font_size": 32,
+                  "start": "0", "end": "5", "font_color": "white"}]}
+  ],
+  "output": {"path": "final.mp4", "codec": "libx264"}
+}
+```
+
 ## Architecture
 
 ```
