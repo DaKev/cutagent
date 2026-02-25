@@ -88,6 +88,18 @@ errors.py       → Error codes and structured error handling
 - Write docstrings for all public functions (Google style).
 - No runtime dependencies beyond the Python standard library — FFmpeg is the only external tool.
 
+### Regenerating the README Demo GIF
+
+The README includes a terminal demo GIF. To regenerate it:
+
+```bash
+brew install vhs   # or your package manager
+pip install -e .
+vhs docs/demo.tape
+```
+
+This produces `docs/demo.gif`. The tape runs: probe → scenes → execute EDL → error recovery.
+
 ### Testing
 
 - Tests live in `tests/` and use `pytest`.
