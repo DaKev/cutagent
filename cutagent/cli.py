@@ -85,6 +85,40 @@ def cmd_capabilities(_args) -> int:
     """Output machine-readable schema of all operations."""
     caps = {
         "version": "1.0",
+        "overview": (
+            "CutAgent provides analysis, editing, audio polish, and visual polish. "
+            "Professional video results require all four — not just cutting. "
+            "Agents should always consider audio normalization, text overlays, "
+            "and transitions, even when the user only asks to 'edit' or 'cut' a video."
+        ),
+        "operation_categories": {
+            "analysis": {
+                "description": "Understand the source material before making any cuts",
+                "commands": [
+                    "probe", "summarize", "scenes", "silence", "beats",
+                    "keyframes", "audio-levels", "frames", "thumbnail",
+                ],
+            },
+            "editing": {
+                "description": "Cut, arrange, and pace the video",
+                "operations": ["trim", "split", "concat", "reorder", "extract", "speed"],
+            },
+            "audio_polish": {
+                "description": "Professional audio — always consider these (the #1 difference between amateur and professional edits)",
+                "operations": ["normalize", "mix_audio", "volume", "replace_audio"],
+            },
+            "visual_polish": {
+                "description": "Titles, annotations, and motion graphics — give the viewer context",
+                "operations": ["text", "animate", "fade"],
+            },
+        },
+        "quality_checklist": [
+            "Audio normalized? (normalize) — inconsistent volume is the #1 amateur mistake",
+            "Transitions smooth? (fade, concat+crossfade) — hard cuts between unrelated clips feel jarring",
+            "Titles/context added? (text, animate) — viewers need to know what they are watching",
+            "Background music? (mix_audio at 0.1–0.2) — subtle music fills silence and sets mood",
+            "Pacing right? (speed) — slow parts lose viewer attention, consider speeding up",
+        ],
         "operations": {
             "trim": {
                 "description": "Extract a segment between two timestamps",
@@ -342,20 +376,51 @@ def cmd_capabilities(_args) -> int:
             "summarize",
         ],
         "exit_codes": {"0": "success", "1": "validation_error", "2": "execution_error", "3": "system_error"},
-        "agent_workflow": [
-            "1. Run 'summarize' with --frame-dir to get content map and scene preview frames",
-            "2. Review scene frames to understand visual content of each scene",
-            "3. Run 'beats' to detect musical beats for rhythm-aligned cuts",
-            "4. Use 'suggested_cut_points' and beat timestamps for clean transitions",
-            "5. Trim clips at scene boundaries or suggested cut points",
-            "6. Use 'normalize' to even out loudness across clips before concatenation",
-            "7. Use 'mix_audio' to layer background music at a subtle level (mix_level 0.1–0.2)",
-            "8. Use 'crossfade' transition in concat for smooth audio between clips",
-            "9. Apply 'fade' (fade_in/fade_out) for polished opening and closing",
-            "10. Use 'text' to add titles, lower thirds, or annotations with timed display",
-            "11. After text/animate, extract frames at review_timestamps from the output to visually verify overlays",
-            "12. Execute via EDL for multi-step edits with $N references",
-        ],
+        "agent_workflow": {
+            "_note": "Professional editing has 4 phases. Skipping audio or visual polish produces amateur results.",
+            "phases": {
+                "1_analyze": {
+                    "name": "Analyze the source material",
+                    "why": "You cannot make good editing decisions without understanding the content",
+                    "steps": [
+                        "Run 'summarize' with --frame-dir to get content map and scene preview frames",
+                        "Review scene frames to understand visual content of each scene",
+                        "Run 'beats' if music or rhythm-aligned cuts are relevant",
+                        "Use 'suggested_cut_points' and beat timestamps to plan transitions",
+                    ],
+                },
+                "2_edit": {
+                    "name": "Cut and arrange",
+                    "why": "Select the best content and remove dead air",
+                    "steps": [
+                        "Trim clips at scene boundaries or suggested cut points",
+                        "Reorder or concat segments into the desired narrative",
+                        "Adjust speed for pacing (speed up slow sections, slow-mo for emphasis)",
+                    ],
+                },
+                "3_audio_polish": {
+                    "name": "Polish the audio",
+                    "why": "Bad audio ruins good video — this phase is NOT optional",
+                    "steps": [
+                        "Use 'normalize' to even out loudness (always do this)",
+                        "Use 'mix_audio' to layer background music at a subtle level (mix_level 0.1–0.2)",
+                        "Use 'volume' to boost quiet clips or reduce loud ones before concat",
+                        "Use 'crossfade' transition in concat for smooth audio between clips",
+                    ],
+                },
+                "4_visual_polish": {
+                    "name": "Add titles, transitions, and visual context",
+                    "why": "Titles tell the viewer what they are watching; transitions create flow",
+                    "steps": [
+                        "Apply 'fade' (fade_in/fade_out) for polished opening and closing",
+                        "Use 'text' to add titles, lower-thirds, or annotations with timed display",
+                        "Use 'animate' for motion graphics (slide-in titles, fade-in captions)",
+                        "After text/animate, extract frames at review_timestamps to verify overlays",
+                    ],
+                },
+            },
+            "execute": "Combine all operations into a single EDL for multi-step edits with $N references",
+        },
         "progress_output": {
             "description": "During 'execute', progress is emitted as JSONL on stderr",
             "format": {"progress": {"step": "int", "total": "int", "op": "str", "status": "'running' | 'done'"}},
@@ -366,6 +431,42 @@ def cmd_capabilities(_args) -> int:
             "fields": {
                 "estimated_duration": "float (seconds) or absent if unknown",
                 "estimated_duration_formatted": "HH:MM:SS.mmm or absent if unknown",
+            },
+        },
+        "recipes": {
+            "_note": "Common editing patterns — each combines multiple operations for professional results",
+            "interview_cleanup": {
+                "description": "Clean up an interview recording",
+                "operations": [
+                    {"op": "summarize", "why": "Find silence gaps and scene boundaries"},
+                    {"op": "trim", "why": "Remove intro/outro dead air"},
+                    {"op": "normalize", "why": "Ensure consistent loudness throughout"},
+                    {"op": "text", "why": "Add speaker name as lower-third"},
+                    {"op": "fade", "why": "Smooth fade-in opening and fade-out closing"},
+                ],
+            },
+            "highlight_reel": {
+                "description": "Create a highlight reel from longer footage",
+                "operations": [
+                    {"op": "summarize", "why": "Identify scene boundaries and key moments"},
+                    {"op": "trim", "why": "Extract the best clips (multiple trims)"},
+                    {"op": "normalize", "why": "Even out audio levels across clips"},
+                    {"op": "concat+crossfade", "why": "Join clips with smooth crossfade transitions"},
+                    {"op": "mix_audio", "why": "Add background music to tie clips together"},
+                    {"op": "text", "why": "Add title card at start and section labels"},
+                    {"op": "fade", "why": "Fade in at start, fade out at end"},
+                ],
+            },
+            "tutorial_polish": {
+                "description": "Polish a screen recording or tutorial",
+                "operations": [
+                    {"op": "silence", "why": "Find pauses and dead air to cut out"},
+                    {"op": "trim", "why": "Remove long pauses and mistakes"},
+                    {"op": "speed", "why": "Speed up repetitive sections (2x)"},
+                    {"op": "normalize", "why": "Clean up microphone audio levels"},
+                    {"op": "text", "why": "Add step labels and annotations"},
+                    {"op": "animate", "why": "Animated callouts for key moments"},
+                ],
             },
         },
         "tips": [
