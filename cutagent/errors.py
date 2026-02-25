@@ -6,7 +6,6 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Error codes
 # ---------------------------------------------------------------------------
@@ -80,7 +79,7 @@ class CutAgentError(Exception):
     def __str__(self) -> str:
         return f"[{self.code}] {self.message}"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "error": True,
             "code": self.code,

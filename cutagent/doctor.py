@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 
 def _get_version(binary_path: str) -> str | None:
@@ -54,7 +55,7 @@ def _detect_source(binary_name: str, path: str) -> str:
     return "unknown"
 
 
-def _check_binary(name: str) -> dict:
+def _check_binary(name: str) -> dict[str, Any]:
     """Check a single binary (ffmpeg or ffprobe)."""
     from cutagent.ffmpeg import find_ffmpeg, find_ffprobe
 
@@ -73,7 +74,7 @@ def _check_binary(name: str) -> dict:
         return {"found": False, "path": None, "version": None, "source": None}
 
 
-def _check_package(package_name: str) -> dict:
+def _check_package(package_name: str) -> dict[str, Any]:
     """Check if a Python package is importable."""
     try:
         mod = __import__(package_name)
@@ -83,7 +84,7 @@ def _check_package(package_name: str) -> dict:
         return {"installed": False, "version": None}
 
 
-def _check_temp_dir() -> dict:
+def _check_temp_dir() -> dict[str, Any]:
     """Check temp directory is writable and report free space."""
     tmp = tempfile.gettempdir()
     writable = os.access(tmp, os.W_OK)
@@ -101,7 +102,7 @@ def _check_temp_dir() -> dict:
     }
 
 
-def _human_bytes(n: int) -> str:
+def _human_bytes(n: float) -> str:
     """Format bytes as human-readable string."""
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if abs(n) < 1024:
@@ -110,7 +111,7 @@ def _human_bytes(n: int) -> str:
     return f"{n:.1f} PB"
 
 
-def _check_env_vars() -> dict:
+def _check_env_vars() -> dict[str, Any]:
     """Report cutagent-related environment variables."""
     keys = ["CUTAGENT_FFMPEG", "CUTAGENT_FFPROBE", "CUTAGENT_FFMPEG_DIR"]
     return {k: os.environ.get(k) for k in keys}
@@ -119,7 +120,7 @@ def _check_env_vars() -> dict:
 _IMPORTANT_FILTERS = ["drawtext", "subtitles", "overlay", "scale"]
 
 
-def _check_ffmpeg_filters(ffmpeg_path: str | None) -> dict:
+def _check_ffmpeg_filters(ffmpeg_path: str | None) -> dict[str, Any]:
     """Check which important ffmpeg filters are available."""
     if not ffmpeg_path:
         return {"checked": False, "available": {}, "missing": _IMPORTANT_FILTERS}
@@ -142,7 +143,7 @@ def _check_ffmpeg_filters(ffmpeg_path: str | None) -> dict:
         return {"checked": False, "available": {}, "missing": _IMPORTANT_FILTERS}
 
 
-def _check_shebang() -> dict:
+def _check_shebang() -> dict[str, Any]:
     """Check if the cutagent script has a valid interpreter in its shebang."""
     script_path = shutil.which("cutagent")
     if not script_path:
@@ -175,7 +176,7 @@ def _check_shebang() -> dict:
         return {"ok": None, "detail": f"Could not read script: {exc}", "path": script_path}
 
 
-def run_doctor() -> dict:
+def run_doctor() -> dict[str, Any]:
     """Run all diagnostic checks and return a structured report."""
     ffmpeg_info = _check_binary("ffmpeg")
     ffprobe_info = _check_binary("ffprobe")

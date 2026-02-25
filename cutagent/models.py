@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field, asdict
-from typing import Optional
-
+from dataclasses import asdict, dataclass, field
+from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
 # Time parsing helper
@@ -58,12 +57,12 @@ class StreamInfo:
     sample_rate: Optional[int] = None
     channels: Optional[int] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         return {k: v for k, v in d.items() if v is not None}
 
     @classmethod
-    def from_dict(cls, data: dict) -> StreamInfo:
+    def from_dict(cls, data: dict[str, Any]) -> StreamInfo:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
@@ -95,7 +94,7 @@ class ProbeResult:
         v = self.video_stream
         return v.height if v else None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "path": self.path,
             "duration": self.duration,
@@ -109,7 +108,7 @@ class ProbeResult:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> ProbeResult:
+    def from_dict(cls, data: dict[str, Any]) -> ProbeResult:
         streams = [StreamInfo.from_dict(s) for s in data.get("streams", [])]
         return cls(
             path=data["path"],
@@ -133,12 +132,12 @@ class FrameResult:
     width: Optional[int] = None
     height: Optional[int] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         return {k: v for k, v in d.items() if v is not None}
 
     @classmethod
-    def from_dict(cls, data: dict) -> FrameResult:
+    def from_dict(cls, data: dict[str, Any]) -> FrameResult:
         return cls(
             timestamp=float(data["timestamp"]),
             path=data["path"],
@@ -157,8 +156,8 @@ class SceneInfo:
     has_audio: Optional[bool] = None
     avg_loudness: Optional[float] = None
 
-    def to_dict(self) -> dict:
-        d: dict = {
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "start": self.start,
             "end": self.end,
             "duration": self.duration,
@@ -172,7 +171,7 @@ class SceneInfo:
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> SceneInfo:
+    def from_dict(cls, data: dict[str, Any]) -> SceneInfo:
         return cls(
             start=float(data["start"]),
             end=float(data["end"]),
@@ -190,11 +189,11 @@ class SilenceInterval:
     end: float
     duration: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> SilenceInterval:
+    def from_dict(cls, data: dict[str, Any]) -> SilenceInterval:
         return cls(
             start=float(data["start"]),
             end=float(data["end"]),
@@ -209,11 +208,11 @@ class AudioLevel:
     rms_db: float
     sample_count: int = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> AudioLevel:
+    def from_dict(cls, data: dict[str, Any]) -> AudioLevel:
         return cls(
             timestamp=float(data["timestamp"]),
             rms_db=float(data["rms_db"]),
@@ -227,11 +226,11 @@ class BeatInfo:
     timestamp: float
     strength: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> BeatInfo:
+    def from_dict(cls, data: dict[str, Any]) -> BeatInfo:
         return cls(
             timestamp=float(data["timestamp"]),
             strength=float(data["strength"]),
@@ -250,7 +249,7 @@ class VideoSummary:
     silence_points: list[float] = field(default_factory=list)
     suggested_cut_points: list[float] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "path": self.path,
             "duration": self.duration,
@@ -264,7 +263,7 @@ class VideoSummary:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> VideoSummary:
+    def from_dict(cls, data: dict[str, Any]) -> VideoSummary:
         return cls(
             path=data["path"],
             duration=float(data["duration"]),
@@ -289,14 +288,14 @@ class TrimOp:
     id: Optional[str] = None
     op: str = "trim"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if d["id"] is None:
             del d["id"]
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> TrimOp:
+    def from_dict(cls, data: dict[str, Any]) -> TrimOp:
         return cls(source=data["source"], start=data["start"], end=data["end"], id=data.get("id"))
 
 
@@ -307,14 +306,14 @@ class SplitOp:
     id: Optional[str] = None
     op: str = "split"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if d["id"] is None:
             del d["id"]
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> SplitOp:
+    def from_dict(cls, data: dict[str, Any]) -> SplitOp:
         return cls(source=data["source"], points=data["points"], id=data.get("id"))
 
 
@@ -326,12 +325,12 @@ class ConcatOp:
     transition_duration: Optional[float] = None
     op: str = "concat"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         return {k: v for k, v in d.items() if v is not None}
 
     @classmethod
-    def from_dict(cls, data: dict) -> ConcatOp:
+    def from_dict(cls, data: dict[str, Any]) -> ConcatOp:
         return cls(
             segments=data["segments"],
             id=data.get("id"),
@@ -347,14 +346,14 @@ class ReorderOp:
     id: Optional[str] = None
     op: str = "reorder"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if d["id"] is None:
             del d["id"]
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> ReorderOp:
+    def from_dict(cls, data: dict[str, Any]) -> ReorderOp:
         return cls(segments=data["segments"], order=data["order"], id=data.get("id"))
 
 
@@ -365,14 +364,14 @@ class ExtractOp:
     id: Optional[str] = None
     op: str = "extract"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if d["id"] is None:
             del d["id"]
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> ExtractOp:
+    def from_dict(cls, data: dict[str, Any]) -> ExtractOp:
         return cls(source=data["source"], stream=data["stream"], id=data.get("id"))
 
 
@@ -385,12 +384,12 @@ class FadeOp:
     fade_out: float = 0.0
     op: str = "fade"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         return {k: v for k, v in d.items() if v is not None}
 
     @classmethod
-    def from_dict(cls, data: dict) -> FadeOp:
+    def from_dict(cls, data: dict[str, Any]) -> FadeOp:
         return cls(
             source=data["source"],
             id=data.get("id"),
@@ -407,14 +406,14 @@ class SpeedOp:
     factor: float = 1.0
     op: str = "speed"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if d["id"] is None:
             del d["id"]
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> SpeedOp:
+    def from_dict(cls, data: dict[str, Any]) -> SpeedOp:
         return cls(
             source=data["source"],
             id=data.get("id"),
@@ -431,14 +430,14 @@ class MixAudioOp:
     mix_level: float = 0.3
     op: str = "mix_audio"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if d["id"] is None:
             del d["id"]
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> MixAudioOp:
+    def from_dict(cls, data: dict[str, Any]) -> MixAudioOp:
         return cls(
             source=data["source"],
             audio=data["audio"],
@@ -455,14 +454,14 @@ class VolumeOp:
     gain_db: float = 0.0
     op: str = "volume"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if d["id"] is None:
             del d["id"]
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> VolumeOp:
+    def from_dict(cls, data: dict[str, Any]) -> VolumeOp:
         return cls(
             source=data["source"],
             id=data.get("id"),
@@ -478,14 +477,14 @@ class ReplaceAudioOp:
     id: Optional[str] = None
     op: str = "replace_audio"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if d["id"] is None:
             del d["id"]
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> ReplaceAudioOp:
+    def from_dict(cls, data: dict[str, Any]) -> ReplaceAudioOp:
         return cls(
             source=data["source"],
             audio=data["audio"],
@@ -502,14 +501,14 @@ class NormalizeOp:
     true_peak_dbtp: float = -1.5
     op: str = "normalize"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if d["id"] is None:
             del d["id"]
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> NormalizeOp:
+    def from_dict(cls, data: dict[str, Any]) -> NormalizeOp:
         return cls(
             source=data["source"],
             id=data.get("id"),
@@ -546,12 +545,12 @@ class TextEntry:
     stroke_color: Optional[str] = None
     stroke_width: int = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         return {k: v for k, v in d.items() if v is not None}
 
     @classmethod
-    def from_dict(cls, data: dict) -> TextEntry:
+    def from_dict(cls, data: dict[str, Any]) -> TextEntry:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
@@ -563,8 +562,8 @@ class TextOp:
     entries: list[TextEntry] = field(default_factory=list)
     op: str = "text"
 
-    def to_dict(self) -> dict:
-        d: dict = {
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "op": self.op,
             "source": self.source,
             "entries": [e.to_dict() for e in self.entries],
@@ -574,7 +573,7 @@ class TextOp:
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> TextOp:
+    def from_dict(cls, data: dict[str, Any]) -> TextOp:
         entries = [TextEntry.from_dict(e) for e in data.get("entries", [])]
         return cls(source=data["source"], id=data.get("id"), entries=entries)
 
@@ -595,11 +594,11 @@ class AnimationKeyframe:
     t: float
     value: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> AnimationKeyframe:
+    def from_dict(cls, data: dict[str, Any]) -> AnimationKeyframe:
         return cls(t=float(data["t"]), value=float(data["value"]))
 
 
@@ -609,14 +608,14 @@ class AnimationProperty:
     keyframes: list[AnimationKeyframe]
     easing: str = "linear"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "keyframes": [kf.to_dict() for kf in self.keyframes],
             "easing": self.easing,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> AnimationProperty:
+    def from_dict(cls, data: dict[str, Any]) -> AnimationProperty:
         kfs = [AnimationKeyframe.from_dict(kf) for kf in data["keyframes"]]
         return cls(keyframes=kfs, easing=data.get("easing", "linear"))
 
@@ -642,8 +641,8 @@ class AnimationLayer:
     # Image-specific fields
     path: Optional[str] = None
 
-    def to_dict(self) -> dict:
-        d: dict = {
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "type": self.type,
             "start": self.start,
             "end": self.end,
@@ -669,7 +668,7 @@ class AnimationLayer:
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> AnimationLayer:
+    def from_dict(cls, data: dict[str, Any]) -> AnimationLayer:
         props = {
             k: AnimationProperty.from_dict(v)
             for k, v in data.get("properties", {}).items()
@@ -702,8 +701,8 @@ class AnimateOp:
     fps: int = 30
     op: str = "animate"
 
-    def to_dict(self) -> dict:
-        d: dict = {
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "op": self.op,
             "source": self.source,
             "fps": self.fps,
@@ -714,8 +713,8 @@ class AnimateOp:
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> AnimateOp:
-        layers = [AnimationLayer.from_dict(l) for l in data.get("layers", [])]
+    def from_dict(cls, data: dict[str, Any]) -> AnimateOp:
+        layers = [AnimationLayer.from_dict(layer) for layer in data.get("layers", [])]
         return cls(
             source=data["source"],
             id=data.get("id"),
@@ -725,7 +724,7 @@ class AnimateOp:
 
 
 # Registry for parsing operation dicts into typed objects
-OPERATION_TYPES: dict[str, type] = {
+OPERATION_TYPES: dict[str, Any] = {
     "trim": TrimOp,
     "split": SplitOp,
     "concat": ConcatOp,
@@ -742,13 +741,13 @@ OPERATION_TYPES: dict[str, type] = {
 }
 
 
-def parse_operation(data: dict):
+def parse_operation(data: dict[str, Any]) -> Any:
     """Parse a raw operation dict into a typed operation dataclass.
 
     Raises:
         CutAgentError: If the operation type is unknown or required fields are missing.
     """
-    from cutagent.errors import CutAgentError, UNKNOWN_OPERATION, MISSING_FIELD, recovery_hints
+    from cutagent.errors import MISSING_FIELD, UNKNOWN_OPERATION, CutAgentError, recovery_hints
 
     op_type = data.get("op")
     if op_type not in OPERATION_TYPES:
@@ -781,11 +780,11 @@ class OutputSpec:
     path: str
     codec: str = "copy"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> OutputSpec:
+    def from_dict(cls, data: dict[str, Any]) -> OutputSpec:
         return cls(path=data["path"], codec=data.get("codec", "copy"))
 
 
@@ -794,10 +793,10 @@ class EDL:
     """Edit Decision List — the top-level declarative edit format."""
     version: str
     inputs: list[str]
-    operations: list  # list of typed operation dataclasses
+    operations: list[Any]  # list of typed operation dataclasses
     output: OutputSpec
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "version": self.version,
             "inputs": self.inputs,
@@ -806,7 +805,7 @@ class EDL:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> EDL:
+    def from_dict(cls, data: dict[str, Any]) -> EDL:
         ops = [parse_operation(op) for op in data["operations"]]
         return cls(
             version=data["version"],
@@ -828,8 +827,8 @@ class OperationResult:
     duration_seconds: Optional[float] = None
     warnings: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
-        d: dict = {
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "success": self.success,
             "output_path": self.output_path,
         }

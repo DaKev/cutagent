@@ -8,17 +8,16 @@ import shutil
 import subprocess
 
 from cutagent.errors import (
-    CutAgentError,
     EMPTY_TEXT_ENTRIES,
-    INVALID_TEXT_POSITION,
     INVALID_FONT_SIZE,
+    INVALID_TEXT_POSITION,
     INVALID_TEXT_TIMING,
+    CutAgentError,
     recovery_hints,
 )
 from cutagent.ffmpeg import run_ffmpeg
-from cutagent.models import OperationResult, TextEntry, TEXT_POSITIONS, parse_time
+from cutagent.models import TEXT_POSITIONS, OperationResult, TextEntry, parse_time
 from cutagent.probe import probe as probe_file
-
 
 # ---------------------------------------------------------------------------
 # Position preset → FFmpeg coordinate expressions

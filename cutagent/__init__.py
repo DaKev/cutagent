@@ -14,47 +14,47 @@ Public API:
     CutAgentError                                           — structured errors
 """
 
-from cutagent.probe import (
-    probe,
-    keyframes,
-    detect_scenes,
-    find_nearest_keyframe,
-    extract_frames,
-    thumbnail,
-    detect_silence,
-    audio_levels,
-    detect_beats,
-    summarize,
-)
-from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
-from cutagent.audio_ops import mix_audio, adjust_volume, replace_audio, normalize_audio
-from cutagent.text_ops import add_text
 from cutagent.animation_ops import animate
-from cutagent.engine import parse_edl, execute_edl
-from cutagent.validation import validate_edl
+from cutagent.audio_ops import adjust_volume, mix_audio, normalize_audio, replace_audio
+from cutagent.engine import execute_edl, parse_edl
 from cutagent.errors import CutAgentError
 from cutagent.models import (
-    ProbeResult,
-    FrameResult,
-    SceneInfo,
-    SilenceInterval,
-    AudioLevel,
-    BeatInfo,
-    VideoSummary,
-    SpeedOp,
-    MixAudioOp,
-    VolumeOp,
-    ReplaceAudioOp,
-    NormalizeOp,
-    TextOp,
-    TextEntry,
+    EDL,
     AnimateOp,
+    AnimationKeyframe,
     AnimationLayer,
     AnimationProperty,
-    AnimationKeyframe,
+    AudioLevel,
+    BeatInfo,
+    FrameResult,
+    MixAudioOp,
+    NormalizeOp,
     OperationResult,
-    EDL,
+    ProbeResult,
+    ReplaceAudioOp,
+    SceneInfo,
+    SilenceInterval,
+    SpeedOp,
+    TextEntry,
+    TextOp,
+    VideoSummary,
+    VolumeOp,
 )
+from cutagent.operations import concat, extract_stream, fade, reorder, speed, split, trim
+from cutagent.probe import (
+    audio_levels,
+    detect_beats,
+    detect_scenes,
+    detect_silence,
+    extract_frames,
+    find_nearest_keyframe,
+    keyframes,
+    probe,
+    summarize,
+    thumbnail,
+)
+from cutagent.text_ops import add_text
+from cutagent.validation import validate_edl
 
 __version__ = "0.3.0"
 

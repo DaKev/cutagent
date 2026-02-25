@@ -2,39 +2,41 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from cutagent.engine import parse_edl, _is_reference, _is_input_reference, _is_named_reference, _INPUT_REF_PREFIX
+from cutagent.engine import (
+    _INPUT_REF_PREFIX,
+    _is_input_reference,
+    _is_named_reference,
+    _is_reference,
+    parse_edl,
+)
 from cutagent.errors import CutAgentError
 from cutagent.models import (
-    EDL,
-    TrimOp,
-    SplitOp,
+    ANIMATION_EASINGS,
+    ANIMATION_LAYER_TYPES,
+    IMAGE_ANIMATABLE_PROPS,
+    TEXT_ANIMATABLE_PROPS,
+    TEXT_POSITIONS,
+    AnimateOp,
     ConcatOp,
-    ReorderOp,
     ExtractOp,
     FadeOp,
-    SpeedOp,
     MixAudioOp,
-    VolumeOp,
-    ReplaceAudioOp,
     NormalizeOp,
+    ReorderOp,
+    ReplaceAudioOp,
+    SpeedOp,
+    SplitOp,
     TextOp,
-    AnimateOp,
-    AnimationLayer,
-    TextEntry,
-    TEXT_POSITIONS,
-    ANIMATION_LAYER_TYPES,
-    ANIMATION_EASINGS,
-    TEXT_ANIMATABLE_PROPS,
-    IMAGE_ANIMATABLE_PROPS,
-    parse_time,
+    TrimOp,
+    VolumeOp,
     format_time,
+    parse_time,
 )
 from cutagent.probe import probe
-
-import re
 
 _CUSTOM_POS_RE = re.compile(r"^\d+\s*,\s*\d+$")
 
@@ -49,8 +51,9 @@ def _get_ffmpeg_filters() -> set[str]:
     if _ffmpeg_available_filters is not None:
         return _ffmpeg_available_filters
     try:
-        from cutagent.ffmpeg import find_ffmpeg
         import subprocess
+
+        from cutagent.ffmpeg import find_ffmpeg
         result = subprocess.run(
             [find_ffmpeg(), "-filters"],
             capture_output=True, text=True, timeout=10,
@@ -97,22 +100,22 @@ class ValidationResult:
     """Collects errors and warnings from a dry-run validation."""
 
     def __init__(self) -> None:
-        self.errors: list[dict] = []
-        self.warnings: list[dict] = []
+        self.errors: list[dict[str, Any]] = []
+        self.warnings: list[dict[str, Any]] = []
         self.estimated_duration: Optional[float] = None
 
     @property
     def valid(self) -> bool:
         return len(self.errors) == 0
 
-    def add_error(self, code: str, message: str, **context) -> None:
+    def add_error(self, code: str, message: str, **context: Any) -> None:
         self.errors.append({"code": code, "message": message, **context})
 
-    def add_warning(self, code: str, message: str, **context) -> None:
+    def add_warning(self, code: str, message: str, **context: Any) -> None:
         self.warnings.append({"code": code, "message": message, **context})
 
-    def to_dict(self) -> dict:
-        d = {
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "valid": self.valid,
             "errors": self.errors,
             "warnings": self.warnings,
@@ -160,7 +163,7 @@ def _resolve_seg_to_input(source: str, inputs: list[str]) -> str | None:
 # Validators
 # ---------------------------------------------------------------------------
 
-def validate_edl(raw: str | dict) -> ValidationResult:
+def validate_edl(raw: str | dict[str, Any]) -> ValidationResult:
     """Validate an EDL without executing it.
 
     Checks:
@@ -243,7 +246,7 @@ def validate_edl(raw: str | dict) -> ValidationResult:
 
 
 def _validate_operation(
-    op,
+    op: Any,
     idx: int,
     produced: set[int],
     file_durations: dict[str, float],
@@ -338,7 +341,7 @@ def _validate_source(
 
 
 def _validate_trim(
-    op: TrimOp, idx: int, produced: set[int], durations: dict,
+    op: TrimOp, idx: int, produced: set[int], durations: dict[str, float],
     result: ValidationResult, input_count: int = 0,
     named_ops: dict[str, int] | None = None,
 ) -> Optional[float]:
@@ -376,7 +379,7 @@ def _validate_trim(
 
 
 def _validate_split(
-    op: SplitOp, idx: int, produced: set[int], durations: dict,
+    op: SplitOp, idx: int, produced: set[int], durations: dict[str, float],
     result: ValidationResult, input_count: int = 0,
     named_ops: dict[str, int] | None = None,
 ) -> Optional[float]:
@@ -515,7 +518,7 @@ def _validate_extract(
 
 
 def _validate_fade(
-    op: FadeOp, idx: int, produced: set[int], durations: dict,
+    op: FadeOp, idx: int, produced: set[int], durations: dict[str, float],
     result: ValidationResult, input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     inputs: list[str] | None = None,

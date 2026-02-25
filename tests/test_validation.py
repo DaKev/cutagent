@@ -1,13 +1,15 @@
 """Tests for cutagent.validation — dry-run EDL checks."""
 
-import os
+
+from typing import Any
 
 import pytest
+
 from cutagent.validation import validate_edl
 
 
 class TestValidateEDL:
-    def test_valid_edl(self, test_video):
+    def test_valid_edl(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -20,7 +22,7 @@ class TestValidateEDL:
         assert result.valid
         assert len(result.errors) == 0
 
-    def test_missing_input_file(self):
+    def test_missing_input_file(self) -> None:
         edl = {
             "version": "1.0",
             "inputs": ["/nonexistent/video.mp4"],
@@ -34,7 +36,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INPUT_NOT_FOUND" in codes
 
-    def test_trim_start_after_end(self, test_video):
+    def test_trim_start_after_end(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -48,7 +50,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "TRIM_START_AFTER_END" in codes
 
-    def test_trim_beyond_duration(self, test_video):
+    def test_trim_beyond_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -62,7 +64,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "TRIM_BEYOND_DURATION" in codes
 
-    def test_invalid_reference(self, test_video):
+    def test_invalid_reference(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -76,7 +78,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_REFERENCE" in codes
 
-    def test_valid_reference(self, test_video):
+    def test_valid_reference(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -90,13 +92,13 @@ class TestValidateEDL:
         result = validate_edl(edl)
         assert result.valid
 
-    def test_invalid_json(self):
+    def test_invalid_json(self) -> None:
         result = validate_edl("{bad json}")
         assert not result.valid
         codes = [e["code"] for e in result.errors]
         assert "INVALID_EDL" in codes
 
-    def test_invalid_time_format(self, test_video):
+    def test_invalid_time_format(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -110,7 +112,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_TIME_FORMAT" in codes
 
-    def test_output_as_dict(self, test_video):
+    def test_output_as_dict(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -125,7 +127,7 @@ class TestValidateEDL:
         assert "errors" in d
         assert "warnings" in d
 
-    def test_invalid_stream_type(self, test_video):
+    def test_invalid_stream_type(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -139,7 +141,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_STREAM_TYPE" in codes
 
-    def test_reorder_out_of_range(self, test_video):
+    def test_reorder_out_of_range(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -153,7 +155,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "REORDER_INDEX_OUT_OF_RANGE" in codes
 
-    def test_split_beyond_duration(self, test_video):
+    def test_split_beyond_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -167,7 +169,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "SPLIT_POINT_BEYOND_DURATION" in codes
 
-    def test_invalid_concat_transition(self, test_video):
+    def test_invalid_concat_transition(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -181,7 +183,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_TRANSITION" in codes
 
-    def test_invalid_concat_transition_duration(self, test_video):
+    def test_invalid_concat_transition_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -200,7 +202,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_TRANSITION_DURATION" in codes
 
-    def test_valid_fade(self, test_video):
+    def test_valid_fade(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -212,7 +214,7 @@ class TestValidateEDL:
         result = validate_edl(edl)
         assert result.valid
 
-    def test_invalid_fade_duration(self, test_video):
+    def test_invalid_fade_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -226,7 +228,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_FADE_DURATION" in codes
 
-    def test_valid_speed(self, test_video):
+    def test_valid_speed(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -238,7 +240,7 @@ class TestValidateEDL:
         result = validate_edl(edl)
         assert result.valid
 
-    def test_invalid_speed_factor_zero(self, test_video):
+    def test_invalid_speed_factor_zero(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -252,7 +254,7 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_SPEED_FACTOR" in codes
 
-    def test_invalid_speed_factor_out_of_range(self, test_video):
+    def test_invalid_speed_factor_out_of_range(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -270,7 +272,7 @@ class TestValidateEDL:
 class TestInputRefValidation:
     """Tests for $input.N reference validation."""
 
-    def test_valid_input_ref(self, test_video):
+    def test_valid_input_ref(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -282,7 +284,7 @@ class TestInputRefValidation:
         result = validate_edl(edl)
         assert result.valid
 
-    def test_invalid_input_ref_out_of_range(self, test_video):
+    def test_invalid_input_ref_out_of_range(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -296,7 +298,7 @@ class TestInputRefValidation:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_REFERENCE" in codes
 
-    def test_input_ref_in_concat_segments(self, test_video):
+    def test_input_ref_in_concat_segments(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -308,7 +310,7 @@ class TestInputRefValidation:
         result = validate_edl(edl)
         assert result.valid
 
-    def test_mixed_input_ref_and_op_ref(self, test_video):
+    def test_mixed_input_ref_and_op_ref(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -326,7 +328,7 @@ class TestInputRefValidation:
 class TestAnimateValidation:
     """Tests for AnimateOp validation in EDL."""
 
-    def test_valid_animate_edl(self, test_video):
+    def test_valid_animate_edl(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -349,7 +351,7 @@ class TestAnimateValidation:
         result = validate_edl(edl)
         assert result.valid
 
-    def test_animate_empty_layers(self, test_video):
+    def test_animate_empty_layers(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -363,7 +365,7 @@ class TestAnimateValidation:
         codes = [e["code"] for e in result.errors]
         assert "EMPTY_ANIMATION_LAYERS" in codes
 
-    def test_animate_invalid_layer_type(self, test_video):
+    def test_animate_invalid_layer_type(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -380,7 +382,7 @@ class TestAnimateValidation:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_LAYER_TYPE" in codes
 
-    def test_animate_text_layer_missing_text(self, test_video):
+    def test_animate_text_layer_missing_text(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -397,7 +399,7 @@ class TestAnimateValidation:
         codes = [e["code"] for e in result.errors]
         assert "MISSING_LAYER_FIELD" in codes
 
-    def test_animate_image_layer_missing_path(self, test_video):
+    def test_animate_image_layer_missing_path(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -414,7 +416,7 @@ class TestAnimateValidation:
         codes = [e["code"] for e in result.errors]
         assert "MISSING_LAYER_FIELD" in codes
 
-    def test_animate_invalid_property(self, test_video):
+    def test_animate_invalid_property(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -436,7 +438,7 @@ class TestAnimateValidation:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_ANIMATION_PROPERTY" in codes
 
-    def test_animate_invalid_easing(self, test_video):
+    def test_animate_invalid_easing(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -458,7 +460,7 @@ class TestAnimateValidation:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_ANIMATION_EASING" in codes
 
-    def test_animate_preserves_duration(self, test_video):
+    def test_animate_preserves_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -482,7 +484,7 @@ class TestAnimateValidation:
 class TestEstimatedDuration:
     """Tests for estimated_duration in validation output."""
 
-    def test_trim_estimated_duration(self, test_video):
+    def test_trim_estimated_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -495,7 +497,7 @@ class TestEstimatedDuration:
         assert result.valid
         assert result.estimated_duration == pytest.approx(3.0, abs=0.01)
 
-    def test_trim_estimated_duration_in_dict(self, test_video):
+    def test_trim_estimated_duration_in_dict(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -510,7 +512,7 @@ class TestEstimatedDuration:
         assert d["estimated_duration"] == pytest.approx(2.0, abs=0.01)
         assert "estimated_duration_formatted" in d
 
-    def test_concat_estimated_duration(self, test_video):
+    def test_concat_estimated_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -525,7 +527,7 @@ class TestEstimatedDuration:
         assert result.valid
         assert result.estimated_duration == pytest.approx(4.0, abs=0.01)
 
-    def test_concat_crossfade_estimated_duration(self, test_video):
+    def test_concat_crossfade_estimated_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -546,7 +548,7 @@ class TestEstimatedDuration:
         # 3s + 3s - 0.5s crossfade = 5.5s
         assert result.estimated_duration == pytest.approx(5.5, abs=0.01)
 
-    def test_speed_estimated_duration(self, test_video):
+    def test_speed_estimated_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -561,7 +563,7 @@ class TestEstimatedDuration:
         # 4s / 2x speed = 2s
         assert result.estimated_duration == pytest.approx(2.0, abs=0.01)
 
-    def test_fade_preserves_duration(self, test_video):
+    def test_fade_preserves_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -575,13 +577,13 @@ class TestEstimatedDuration:
         assert result.valid
         assert result.estimated_duration == pytest.approx(3.0, abs=0.01)
 
-    def test_no_estimated_duration_when_invalid(self):
+    def test_no_estimated_duration_when_invalid(self) -> None:
         """Invalid EDLs should not have estimated_duration in the dict."""
         result = validate_edl("{bad json}")
         d = result.to_dict()
         assert "estimated_duration" not in d
 
-    def test_input_ref_estimated_duration(self, test_video):
+    def test_input_ref_estimated_duration(self, test_video: Any) -> None:
         """Estimated duration works with $input.N references too."""
         edl = {
             "version": "1.0",

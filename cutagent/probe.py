@@ -5,11 +5,12 @@ from __future__ import annotations
 import math
 import re
 from pathlib import Path
+from typing import Any
 
 from cutagent.errors import (
-    CutAgentError,
-    INPUT_NOT_FOUND,
     INPUT_INVALID_FORMAT,
+    INPUT_NOT_FOUND,
+    CutAgentError,
     recovery_hints,
 )
 from cutagent.ffmpeg import run_ffmpeg, run_ffprobe, run_ffprobe_json
@@ -38,7 +39,7 @@ def _check_input(path: str | Path) -> Path:
     return p
 
 
-def _parse_stream(raw: dict) -> StreamInfo:
+def _parse_stream(raw: dict[str, Any]) -> StreamInfo:
     """Parse a single stream dict from ffprobe JSON."""
     codec_type = raw.get("codec_type", "unknown")
     info = StreamInfo(
@@ -266,21 +267,21 @@ def detect_scenes(
 
     if frame_output_dir and scenes:
         # Extract 3 frames per scene at 10%, 50%, 90% offsets for a filmstrip
-        timestamps: list[float] = []
+        frame_timestamps: list[float] = []
         scene_indices: list[int] = []
         for i, scene in enumerate(scenes):
             for pct in (0.1, 0.5, 0.9):
-                timestamps.append(scene.start + scene.duration * pct)
+                frame_timestamps.append(scene.start + scene.duration * pct)
                 scene_indices.append(i)
 
         scene_frames = extract_frames(
             p,
-            timestamps,
+            frame_timestamps,
             frame_output_dir,
             image_format="jpg",
             prefix="scene",
         )
-        for frame, scene_idx in zip(scene_frames, scene_indices):
+        for frame, scene_idx in zip(scene_frames, scene_indices, strict=False):
             scenes[scene_idx].frames.append(frame.path)
 
     return scenes
@@ -468,7 +469,7 @@ def detect_beats(
     min_interval: float = 0.15,
     energy_threshold: float = 1.4,
     window_size: int = 8,
-) -> dict:
+) -> dict[str, Any]:
     """Detect musical beats/onsets by analysing audio energy spikes.
 
     Uses fine-grained (20ms) audio RMS levels and detects frames where the

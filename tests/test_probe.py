@@ -1,24 +1,26 @@
 """Tests for cutagent.probe — metadata, keyframes, scene detection."""
 
 import os
+from typing import Any
 
 import pytest
-from cutagent.probe import (
-    probe,
-    keyframes,
-    detect_scenes,
-    find_nearest_keyframe,
-    extract_frames,
-    thumbnail,
-    detect_silence,
-    audio_levels,
-    summarize,
-)
+
 from cutagent.errors import CutAgentError
+from cutagent.probe import (
+    audio_levels,
+    detect_scenes,
+    detect_silence,
+    extract_frames,
+    find_nearest_keyframe,
+    keyframes,
+    probe,
+    summarize,
+    thumbnail,
+)
 
 
 class TestProbe:
-    def test_basic_metadata(self, test_video):
+    def test_basic_metadata(self, test_video: Any) -> None:
         result = probe(test_video)
         assert result.duration == pytest.approx(5.0, abs=0.5)
         assert result.width == 640
@@ -27,51 +29,51 @@ class TestProbe:
         assert result.size_bytes > 0
         assert result.bit_rate > 0
 
-    def test_streams(self, test_video):
+    def test_streams(self, test_video: Any) -> None:
         result = probe(test_video)
         assert result.video_stream is not None
         assert result.video_stream.codec_name == "h264"
         assert result.audio_stream is not None
         assert result.audio_stream.codec_name == "aac"
 
-    def test_to_dict(self, test_video):
+    def test_to_dict(self, test_video: Any) -> None:
         result = probe(test_video)
         d = result.to_dict()
         assert "duration" in d
         assert "streams" in d
         assert isinstance(d["streams"], list)
 
-    def test_file_not_found(self):
+    def test_file_not_found(self) -> None:
         with pytest.raises(CutAgentError) as exc_info:
             probe("/nonexistent/file.mp4")
         assert exc_info.value.code == "INPUT_NOT_FOUND"
 
 
 class TestKeyframes:
-    def test_returns_list(self, test_video):
+    def test_returns_list(self, test_video: Any) -> None:
         kfs = keyframes(test_video)
         assert isinstance(kfs, list)
         assert len(kfs) > 0
         # First keyframe should be at or near 0
         assert kfs[0] < 1.0
 
-    def test_sorted(self, test_video):
+    def test_sorted(self, test_video: Any) -> None:
         kfs = keyframes(test_video)
         assert kfs == sorted(kfs)
 
-    def test_file_not_found(self):
+    def test_file_not_found(self) -> None:
         with pytest.raises(CutAgentError):
             keyframes("/nonexistent/file.mp4")
 
 
 class TestSceneDetection:
-    def test_returns_list(self, test_video):
+    def test_returns_list(self, test_video: Any) -> None:
         scenes = detect_scenes(test_video, threshold=0.3)
         assert isinstance(scenes, list)
         assert len(scenes) >= 1
         assert scenes[0].start == 0.0
 
-    def test_scene_frame_output(self, test_video, output_dir):
+    def test_scene_frame_output(self, test_video: Any, output_dir: Any) -> None:
         scenes = detect_scenes(test_video, threshold=0.3, frame_output_dir=output_dir)
         assert len(scenes) >= 1
         # Each scene should have up to 3 frames (at 10%, 50%, 90% offsets)
@@ -79,25 +81,25 @@ class TestSceneDetection:
         for frame_path in scenes[0].frames:
             assert os.path.exists(frame_path)
 
-    def test_file_not_found(self):
+    def test_file_not_found(self) -> None:
         with pytest.raises(CutAgentError):
             detect_scenes("/nonexistent/file.mp4")
 
 
 class TestFindNearestKeyframe:
-    def test_exact_keyframe(self, test_video):
+    def test_exact_keyframe(self, test_video: Any) -> None:
         kfs = keyframes(test_video)
         if kfs:
             result = find_nearest_keyframe(test_video, kfs[0])
             assert result == kfs[0]
 
-    def test_between_keyframes(self, test_video):
+    def test_between_keyframes(self, test_video: Any) -> None:
         result = find_nearest_keyframe(test_video, 2.5)
         assert isinstance(result, float)
 
 
 class TestFrameExtraction:
-    def test_extract_multiple_frames(self, test_video, output_dir):
+    def test_extract_multiple_frames(self, test_video: Any, output_dir: Any) -> None:
         frames = extract_frames(test_video, timestamps=[0.5, 1.0, 2.0], output_dir=output_dir)
         assert len(frames) == 3
         for frame in frames:
@@ -105,7 +107,7 @@ class TestFrameExtraction:
             assert frame.width is not None
             assert frame.height is not None
 
-    def test_thumbnail(self, test_video, output_dir):
+    def test_thumbnail(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "thumb.jpg")
         frame = thumbnail(test_video, timestamp=1.25, output=out)
         assert os.path.exists(out)
@@ -114,19 +116,19 @@ class TestFrameExtraction:
 
 
 class TestAudioAnalysis:
-    def test_detect_silence(self, test_video_with_silence):
+    def test_detect_silence(self, test_video_with_silence: Any) -> None:
         intervals = detect_silence(test_video_with_silence, threshold=-35.0, min_duration=0.2)
         assert len(intervals) >= 2
         assert intervals[0].start == pytest.approx(0.0, abs=0.2)
 
-    def test_audio_levels(self, test_video):
+    def test_audio_levels(self, test_video: Any) -> None:
         levels = audio_levels(test_video, interval=1.0)
         assert len(levels) >= 4
         assert isinstance(levels[0].rms_db, float)
 
 
 class TestSummary:
-    def test_summarize(self, test_video_with_silence, output_dir):
+    def test_summarize(self, test_video_with_silence: Any, output_dir: Any) -> None:
         result = summarize(test_video_with_silence, frame_dir=output_dir)
         assert result.duration > 0
         assert result.resolution == "640x480"
@@ -135,10 +137,10 @@ class TestSummary:
         assert len(result.suggested_cut_points) >= 1
         assert len(result.scenes[0].frames) >= 1
 
-    def test_summarize_excludes_audio_levels_by_default(self, test_video_with_silence):
+    def test_summarize_excludes_audio_levels_by_default(self, test_video_with_silence: Any) -> None:
         result = summarize(test_video_with_silence)
         assert result.audio_levels == []
 
-    def test_summarize_includes_audio_levels_when_requested(self, test_video_with_silence):
+    def test_summarize_includes_audio_levels_when_requested(self, test_video_with_silence: Any) -> None:
         result = summarize(test_video_with_silence, include_audio_levels=True)
         assert len(result.audio_levels) >= 1

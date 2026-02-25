@@ -6,14 +6,15 @@ import json
 import os
 import shutil
 import subprocess
+import typing
 from pathlib import Path
 
 from cutagent.errors import (
-    CutAgentError,
-    FFMPEG_NOT_FOUND,
-    FFPROBE_NOT_FOUND,
-    FFMPEG_TIMEOUT,
     FFMPEG_FAILED,
+    FFMPEG_NOT_FOUND,
+    FFMPEG_TIMEOUT,
+    FFPROBE_NOT_FOUND,
+    CutAgentError,
     recovery_hints,
 )
 
@@ -99,7 +100,7 @@ def _try_imageio_ffmpeg() -> str | None:
     """Try to get ffmpeg path from imageio-ffmpeg (ffmpeg only, no ffprobe)."""
     try:
         import imageio_ffmpeg
-        return imageio_ffmpeg.get_ffmpeg_exe()
+        return str(imageio_ffmpeg.get_ffmpeg_exe())
     except Exception:
         return None
 
@@ -205,7 +206,7 @@ def run_ffmpeg(
     args: list[str],
     timeout: int = DEFAULT_TIMEOUT,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Run ffmpeg with the given arguments.
 
     Args:
@@ -253,7 +254,7 @@ def run_ffmpeg(
 def run_ffprobe(
     args: list[str],
     timeout: int = 30,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Run ffprobe with the given arguments.
 
     Args:
@@ -296,7 +297,7 @@ def run_ffprobe(
     return result
 
 
-def run_ffprobe_json(path: str | Path) -> dict:
+def run_ffprobe_json(path: str | Path) -> dict[str, typing.Any]:
     """Run ffprobe and return parsed JSON output for a media file."""
     result = run_ffprobe([
         "-v", "quiet",
@@ -305,4 +306,4 @@ def run_ffprobe_json(path: str | Path) -> dict:
         "-show_streams",
         str(path),
     ])
-    return json.loads(result.stdout)
+    return typing.cast(dict[str, typing.Any], json.loads(result.stdout))

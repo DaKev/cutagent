@@ -1,25 +1,24 @@
 """Tests for cutagent.animation and cutagent.animation_ops — keyframe animations."""
 
-import math
 import os
 import subprocess
+from typing import Any, Generator
 
 import pytest
 
 from cutagent.animation import (
+    EASING_FUNCTIONS,
     ease_value,
     interpolate_expr,
-    EASING_FUNCTIONS,
-)
-from cutagent.models import (
-    AnimationKeyframe,
-    AnimationProperty,
-    AnimationLayer,
-    AnimateOp,
-    parse_operation,
 )
 from cutagent.errors import CutAgentError
-
+from cutagent.models import (
+    AnimateOp,
+    AnimationKeyframe,
+    AnimationLayer,
+    AnimationProperty,
+    parse_operation,
+)
 
 # ---------------------------------------------------------------------------
 # Easing evaluation tests (pure Python, no FFmpeg needed)
@@ -28,42 +27,42 @@ from cutagent.errors import CutAgentError
 class TestEaseValue:
     """Unit tests for the ease_value function."""
 
-    def test_linear_endpoints(self):
+    def test_linear_endpoints(self) -> None:
         assert ease_value("linear", 0.0) == 0.0
         assert ease_value("linear", 1.0) == 1.0
 
-    def test_linear_midpoint(self):
+    def test_linear_midpoint(self) -> None:
         assert ease_value("linear", 0.5) == 0.5
 
-    def test_ease_in_starts_slow(self):
+    def test_ease_in_starts_slow(self) -> None:
         assert ease_value("ease-in", 0.0) == 0.0
         assert ease_value("ease-in", 1.0) == 1.0
         assert ease_value("ease-in", 0.5) == 0.25
 
-    def test_ease_out_ends_slow(self):
+    def test_ease_out_ends_slow(self) -> None:
         assert ease_value("ease-out", 0.0) == 0.0
         assert ease_value("ease-out", 1.0) == 1.0
         assert ease_value("ease-out", 0.5) == 0.75
 
-    def test_ease_in_out_symmetric(self):
+    def test_ease_in_out_symmetric(self) -> None:
         assert ease_value("ease-in-out", 0.0) == 0.0
         assert ease_value("ease-in-out", 1.0) == 1.0
         mid = ease_value("ease-in-out", 0.5)
         assert abs(mid - 0.5) < 1e-10
 
-    def test_spring_overshoots(self):
+    def test_spring_overshoots(self) -> None:
         val = ease_value("spring", 0.3)
         assert val > 1.0, "spring should overshoot target at early progress"
 
-    def test_spring_converges(self):
+    def test_spring_converges(self) -> None:
         val = ease_value("spring", 1.0)
         assert abs(val - 1.0) < 0.02, "spring should converge near 1.0 at u=1"
 
-    def test_unknown_easing_raises(self):
+    def test_unknown_easing_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown easing"):
             ease_value("bounce", 0.5)
 
-    def test_clamps_input(self):
+    def test_clamps_input(self) -> None:
         assert ease_value("linear", -0.5) == 0.0
         assert ease_value("linear", 1.5) == 1.0
 
@@ -75,40 +74,40 @@ class TestEaseValue:
 class TestInterpolateExpr:
     """Unit tests for the interpolate_expr FFmpeg expression compiler."""
 
-    def test_single_keyframe_returns_constant(self):
+    def test_single_keyframe_returns_constant(self) -> None:
         result = interpolate_expr("t", [(0.0, 42.0)])
         assert result == "42.0"
 
-    def test_two_keyframes_linear_contains_if(self):
+    def test_two_keyframes_linear_contains_if(self) -> None:
         result = interpolate_expr("t", [(0.0, 0.0), (1.0, 100.0)])
         assert "if(" in result
         assert "100" in result
 
-    def test_empty_keyframes_raises(self):
+    def test_empty_keyframes_raises(self) -> None:
         with pytest.raises(ValueError, match="keyframes must not be empty"):
             interpolate_expr("t", [])
 
-    def test_unknown_easing_raises(self):
+    def test_unknown_easing_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown easing"):
             interpolate_expr("t", [(0.0, 0.0), (1.0, 1.0)], easing="bounce")
 
-    def test_all_easings_produce_expressions(self):
+    def test_all_easings_produce_expressions(self) -> None:
         kfs = [(0.0, 0.0), (1.0, 100.0)]
         for easing in EASING_FUNCTIONS:
             result = interpolate_expr("t", kfs, easing=easing)
             assert isinstance(result, str)
             assert len(result) > 0
 
-    def test_three_keyframes_produces_nested_if(self):
+    def test_three_keyframes_produces_nested_if(self) -> None:
         result = interpolate_expr("t", [(0.0, 0.0), (1.0, 50.0), (2.0, 100.0)])
         assert result.count("if(") >= 2
 
-    def test_spring_expression_contains_exp_cos(self):
+    def test_spring_expression_contains_exp_cos(self) -> None:
         result = interpolate_expr("t", [(0.0, 0.0), (1.0, 100.0)], easing="spring")
         assert "exp(" in result
         assert "cos(" in result
 
-    def test_same_value_keyframes_returns_constant_segment(self):
+    def test_same_value_keyframes_returns_constant_segment(self) -> None:
         result = interpolate_expr("t", [(0.0, 50.0), (1.0, 50.0)])
         assert "50" in result
 
@@ -120,14 +119,14 @@ class TestInterpolateExpr:
 class TestAnimationModels:
     """Tests for animation dataclass serialization."""
 
-    def test_keyframe_roundtrip(self):
+    def test_keyframe_roundtrip(self) -> None:
         kf = AnimationKeyframe(t=1.5, value=200.0)
         d = kf.to_dict()
         restored = AnimationKeyframe.from_dict(d)
         assert restored.t == kf.t
         assert restored.value == kf.value
 
-    def test_property_roundtrip(self):
+    def test_property_roundtrip(self) -> None:
         prop = AnimationProperty(
             keyframes=[AnimationKeyframe(0.0, 0.0), AnimationKeyframe(1.0, 100.0)],
             easing="ease-out",
@@ -137,7 +136,7 @@ class TestAnimationModels:
         assert restored.easing == "ease-out"
         assert len(restored.keyframes) == 2
 
-    def test_text_layer_roundtrip(self):
+    def test_text_layer_roundtrip(self) -> None:
         layer = AnimationLayer(
             type="text",
             text="Hello",
@@ -160,7 +159,7 @@ class TestAnimationModels:
         assert restored.text == "Hello"
         assert "x" in restored.properties
 
-    def test_image_layer_roundtrip(self):
+    def test_image_layer_roundtrip(self) -> None:
         layer = AnimationLayer(
             type="image",
             path="logo.png",
@@ -179,7 +178,7 @@ class TestAnimationModels:
         restored = AnimationLayer.from_dict(d)
         assert restored.path == "logo.png"
 
-    def test_animate_op_roundtrip(self):
+    def test_animate_op_roundtrip(self) -> None:
         op = AnimateOp(
             source="video.mp4",
             fps=24,
@@ -201,7 +200,7 @@ class TestAnimationModels:
         assert restored.fps == 24
         assert len(restored.layers) == 1
 
-    def test_parse_operation_recognizes_animate(self):
+    def test_parse_operation_recognizes_animate(self) -> None:
         data = {
             "op": "animate",
             "source": "test.mp4",
@@ -218,7 +217,7 @@ class TestAnimationModels:
         assert isinstance(op, AnimateOp)
         assert op.source == "test.mp4"
 
-    def test_text_layer_styling_roundtrip(self):
+    def test_text_layer_styling_roundtrip(self) -> None:
         layer = AnimationLayer(
             type="text",
             text="Styled",
@@ -245,7 +244,7 @@ class TestAnimationModels:
         assert restored.stroke_color == "navy"
         assert restored.stroke_width == 2
 
-    def test_text_layer_no_styling_excludes_fields(self):
+    def test_text_layer_no_styling_excludes_fields(self) -> None:
         layer = AnimationLayer(
             type="text", text="Plain", start=0.0, end=3.0, properties={},
         )
@@ -262,30 +261,30 @@ class TestAnimationModels:
 class TestAnimationValidation:
     """Tests for animation layer validation logic."""
 
-    def test_empty_layers_raises(self):
+    def test_empty_layers_raises(self) -> None:
         from cutagent.animation_ops import animate
         with pytest.raises(CutAgentError, match="No animation layers"):
             animate("dummy.mp4", [], "out.mp4")
 
-    def test_invalid_layer_type_raises(self):
+    def test_invalid_layer_type_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
         layer = AnimationLayer(type="video", start=0, end=1)
         with pytest.raises(CutAgentError, match="invalid type"):
             _validate_layer(layer, 0)
 
-    def test_text_layer_missing_text_raises(self):
+    def test_text_layer_missing_text_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
         layer = AnimationLayer(type="text", text=None, start=0, end=1)
         with pytest.raises(CutAgentError, match="requires a 'text' field"):
             _validate_layer(layer, 0)
 
-    def test_image_layer_missing_path_raises(self):
+    def test_image_layer_missing_path_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
         layer = AnimationLayer(type="image", path=None, start=0, end=1)
         with pytest.raises(CutAgentError, match="requires a 'path' field"):
             _validate_layer(layer, 0)
 
-    def test_invalid_property_for_layer_type_raises(self):
+    def test_invalid_property_for_layer_type_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
         layer = AnimationLayer(
             type="text",
@@ -302,7 +301,7 @@ class TestAnimationValidation:
         with pytest.raises(CutAgentError, match="not animatable"):
             _validate_layer(layer, 0)
 
-    def test_invalid_easing_raises(self):
+    def test_invalid_easing_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
         layer = AnimationLayer(
             type="text",
@@ -319,7 +318,7 @@ class TestAnimationValidation:
         with pytest.raises(CutAgentError, match="unknown easing"):
             _validate_layer(layer, 0)
 
-    def test_empty_keyframes_raises(self):
+    def test_empty_keyframes_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
         layer = AnimationLayer(
             type="text",
@@ -333,7 +332,7 @@ class TestAnimationValidation:
         with pytest.raises(CutAgentError, match="no keyframes"):
             _validate_layer(layer, 0)
 
-    def test_valid_text_layer_passes(self):
+    def test_valid_text_layer_passes(self) -> None:
         from cutagent.animation_ops import _validate_layer
         layer = AnimationLayer(
             type="text",
@@ -353,7 +352,7 @@ class TestAnimationValidation:
         )
         _validate_layer(layer, 0)  # should not raise
 
-    def test_valid_image_layer_passes(self):
+    def test_valid_image_layer_passes(self) -> None:
         from cutagent.animation_ops import _validate_layer
         layer = AnimationLayer(
             type="image",
@@ -421,7 +420,7 @@ requires_drawtext = pytest.mark.skipif(
 
 
 @pytest.fixture(autouse=True)
-def _use_drawtext_ffmpeg_animation():
+def _use_drawtext_ffmpeg_animation() -> Generator[None, None, None]:
     """Ensure animation integration tests use an FFmpeg with drawtext support."""
     if _drawtext_ffmpeg is None:
         yield
@@ -444,7 +443,7 @@ def _use_drawtext_ffmpeg_animation():
 class TestAnimateIntegration:
     """Integration tests that run FFmpeg."""
 
-    def test_text_animation_produces_output(self, test_video, tmp_path):
+    def test_text_animation_produces_output(self, test_video: Any, tmp_path: Any) -> None:
         from cutagent.animation_ops import animate
         output = str(tmp_path / "animated.mp4")
         layers = [
@@ -472,7 +471,7 @@ class TestAnimateIntegration:
         assert os.path.exists(output)
         assert os.path.getsize(output) > 0
 
-    def test_multiple_text_layers(self, test_video, tmp_path):
+    def test_multiple_text_layers(self, test_video: Any, tmp_path: Any) -> None:
         from cutagent.animation_ops import animate
         output = str(tmp_path / "multi_text.mp4")
         layers = [
@@ -500,7 +499,7 @@ class TestAnimateIntegration:
         result = animate(test_video, layers, output)
         assert result.success
 
-    def test_spring_easing_renders(self, test_video, tmp_path):
+    def test_spring_easing_renders(self, test_video: Any, tmp_path: Any) -> None:
         from cutagent.animation_ops import animate
         output = str(tmp_path / "spring.mp4")
         layers = [
