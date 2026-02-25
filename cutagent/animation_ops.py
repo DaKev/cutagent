@@ -6,30 +6,27 @@ drawtext (text layers) and overlay (image layers) with animated properties.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from cutagent.animation import interpolate_expr, EASING_FUNCTIONS
-from cutagent.text_ops import detect_system_font
+from cutagent.animation import interpolate_expr
 from cutagent.errors import (
-    CutAgentError,
-    MISSING_FIELD,
     EMPTY_ANIMATION_LAYERS,
-    INVALID_LAYER_TYPE,
     INVALID_ANIMATION_EASING,
     INVALID_ANIMATION_PROPERTY,
+    INVALID_LAYER_TYPE,
+    MISSING_FIELD,
     MISSING_LAYER_FIELD,
+    CutAgentError,
 )
 from cutagent.ffmpeg import run_ffmpeg
 from cutagent.models import (
+    ANIMATION_EASINGS,
+    ANIMATION_LAYER_TYPES,
+    IMAGE_ANIMATABLE_PROPS,
+    TEXT_ANIMATABLE_PROPS,
     AnimationLayer,
     OperationResult,
-    TEXT_ANIMATABLE_PROPS,
-    IMAGE_ANIMATABLE_PROPS,
-    ANIMATION_LAYER_TYPES,
-    ANIMATION_EASINGS,
 )
 from cutagent.probe import probe as probe_file
-
+from cutagent.text_ops import detect_system_font
 
 # ---------------------------------------------------------------------------
 # Validation
@@ -102,7 +99,7 @@ def _escape_drawtext(text: str) -> str:
 
 def _build_text_filter(layer: AnimationLayer) -> str:
     """Build a drawtext filter string with animated expressions."""
-    escaped = _escape_drawtext(layer.text)
+    escaped = _escape_drawtext(layer.text or "")
 
     parts = [f"text='{escaped}'"]
 
@@ -191,15 +188,15 @@ def _build_image_filters(layer: AnimationLayer, input_idx: int) -> tuple[list[st
     overlay_parts: list[str] = []
 
     if "x" in layer.properties:
-        kfs = [(kf.t, kf.value) for kf in layer.properties["x"].keyframes]
-        x_expr = interpolate_expr("t", kfs, layer.properties["x"].easing)
+        x_kfs = [(kf.t, kf.value) for kf in layer.properties["x"].keyframes]
+        x_expr = interpolate_expr("t", x_kfs, layer.properties["x"].easing)
         overlay_parts.append(f"x='{x_expr}'")
     else:
         overlay_parts.append("x='(W-w)/2'")
 
     if "y" in layer.properties:
-        kfs = [(kf.t, kf.value) for kf in layer.properties["y"].keyframes]
-        y_expr = interpolate_expr("t", kfs, layer.properties["y"].easing)
+        y_kfs = [(kf.t, kf.value) for kf in layer.properties["y"].keyframes]
+        y_expr = interpolate_expr("t", y_kfs, layer.properties["y"].easing)
         overlay_parts.append(f"y='{y_expr}'")
     else:
         overlay_parts.append("y='(H-h)/2'")
@@ -245,8 +242,8 @@ def animate(
     info = probe_file(source)
 
     # Separate text and image layers (order matters for filter chain)
-    text_layers = [l for l in layers if l.type == "text"]
-    image_layers = [l for l in layers if l.type == "image"]
+    text_layers = [layer for layer in layers if layer.type == "text"]
+    image_layers = [layer for layer in layers if layer.type == "image"]
 
     # Build filter_complex
     args: list[str] = ["-i", source]
@@ -264,7 +261,7 @@ def animate(
 
     # Step 1: Apply text layers as chained drawtext filters on the base video
     if text_layers:
-        drawtext_chain = ",".join(_build_text_filter(l) for l in text_layers)
+        drawtext_chain = ",".join(_build_text_filter(layer) for layer in text_layers)
         filter_lines.append(f"[{current_video}]{drawtext_chain}[textout]")
         current_label = "textout"
     else:
@@ -272,7 +269,7 @@ def animate(
         current_label = "0:v"
 
     # Step 2: Apply image overlays sequentially
-    for i, (img_layer, input_idx) in enumerate(zip(image_layers, image_input_indices)):
+    for i, (img_layer, input_idx) in enumerate(zip(image_layers, image_input_indices, strict=False)):
         img_filters, overlay_params = _build_image_filters(img_layer, input_idx)
         filter_lines.extend(img_filters)
 

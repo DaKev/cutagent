@@ -6,37 +6,36 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Any, Callable
 
+from cutagent.animation_ops import animate
+from cutagent.audio_ops import adjust_volume, mix_audio, normalize_audio, replace_audio
 from cutagent.errors import (
-    CutAgentError,
     INVALID_EDL,
     INVALID_REFERENCE,
     MISSING_FIELD,
+    CutAgentError,
     recovery_hints,
 )
 from cutagent.models import (
     EDL,
-    TrimOp,
-    SplitOp,
+    AnimateOp,
     ConcatOp,
-    ReorderOp,
     ExtractOp,
     FadeOp,
-    SpeedOp,
     MixAudioOp,
-    VolumeOp,
-    ReplaceAudioOp,
     NormalizeOp,
-    TextOp,
-    AnimateOp,
     OperationResult,
-    OutputSpec,
+    ReorderOp,
+    ReplaceAudioOp,
+    SpeedOp,
+    SplitOp,
+    TextOp,
+    TrimOp,
+    VolumeOp,
 )
-from cutagent.operations import trim, split, concat, reorder, extract_stream, fade, speed
-from cutagent.audio_ops import mix_audio, adjust_volume, replace_audio, normalize_audio
+from cutagent.operations import concat, extract_stream, fade, reorder, speed, split, trim
 from cutagent.text_ops import add_text
-from cutagent.animation_ops import animate
-
 
 # ---------------------------------------------------------------------------
 # Reference resolution
@@ -48,7 +47,16 @@ _INPUT_REF_PREFIX = "$input."
 
 def _is_reference(value: str) -> bool:
     """Check if a string is an operation reference like '$0', '$1'."""
-    return value.startswith(_REF_PREFIX) and value[1:].isdigit()
+    if not value.startswith(_REF_PREFIX):
+        return False
+    # Check if the part after $ is either a digit or digits.digits
+    rest = value[1:]
+    if rest.isdigit():
+        return True
+    if "." in rest:
+        parts = rest.split(".", 1)
+        return len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit()
+    return False
 
 
 def _is_input_reference(value: str) -> bool:
@@ -64,8 +72,33 @@ def _is_named_reference(value: str) -> bool:
     return bool(name) and not name[0].isdigit()
 
 
-def _resolve_ref(value: str, results: dict[int, str]) -> str:
-    """Resolve a $N reference to the temp file path of that operation's output."""
+def _resolve_ref(value: str, results: dict[int, str], split_segments: dict[int, list[str]] | None = None) -> str:
+    """Resolve a $N reference to the temp file path of that operation's output.
+
+    If the reference has a sub-index like $N.M, it resolves to the Mth segment
+    of a split operation.
+    """
+    if "." in value:
+        base, sub_idx_str = value.split(".", 1)
+        idx = int(base[1:])
+        sub_idx = int(sub_idx_str)
+        if split_segments is None or idx not in split_segments:
+            raise CutAgentError(
+                code=INVALID_REFERENCE,
+                message=f"Reference {value} points to segment {sub_idx} of operation {idx}, which has no segments",
+                recovery=["Use $N.M only for operations that return multiple segments (e.g. split)"],
+                context={"reference": value},
+            )
+        segments = split_segments[idx]
+        if sub_idx < 0 or sub_idx >= len(segments):
+            raise CutAgentError(
+                code=INVALID_REFERENCE,
+                message=f"Reference {value} points to segment {sub_idx}, but operation {idx} only has {len(segments)} segments",
+                recovery=[f"Use indices between 0 and {len(segments) - 1}"],
+                context={"reference": value, "segments_count": len(segments)},
+            )
+        return segments[sub_idx]
+
     idx = int(value[1:])
     if idx not in results:
         raise CutAgentError(
@@ -113,12 +146,13 @@ def _resolve_source(
     results: dict[int, str],
     inputs: list[str] | None = None,
     named_results: dict[str, str] | None = None,
+    split_segments: dict[int, list[str]] | None = None,
 ) -> str:
     """Resolve a source field — $input.N, $name, $N reference, or file path."""
     if inputs is not None and _is_input_reference(value):
         return _resolve_input_ref(value, inputs)
     if _is_reference(value):
-        return _resolve_ref(value, results)
+        return _resolve_ref(value, results, split_segments)
     if named_results is not None and _is_named_reference(value):
         return _resolve_named_ref(value, named_results)
     return value
@@ -129,16 +163,17 @@ def _resolve_segments(
     results: dict[int, str],
     inputs: list[str] | None = None,
     named_results: dict[str, str] | None = None,
+    split_segments: dict[int, list[str]] | None = None,
 ) -> list[str]:
     """Resolve a list of segments, replacing any $input.N, $name, or $N references."""
-    return [_resolve_source(s, results, inputs, named_results) for s in segments]
+    return [_resolve_source(s, results, inputs, named_results, split_segments) for s in segments]
 
 
 # ---------------------------------------------------------------------------
 # EDL parsing
 # ---------------------------------------------------------------------------
 
-def parse_edl(raw: str | dict) -> EDL:
+def parse_edl(raw: str | dict[str, Any]) -> EDL:
     """Parse a JSON string or dict into a validated EDL object.
 
     Args:
@@ -180,8 +215,8 @@ def parse_edl(raw: str | dict) -> EDL:
 # ---------------------------------------------------------------------------
 
 def execute_edl(
-    raw: str | dict,
-    progress_callback: callable | None = None,
+    raw: str | dict[str, Any],
+    progress_callback: Callable[[int, int, str, str], None] | None = None,
 ) -> OperationResult:
     """Parse and execute an Edit Decision List.
 
@@ -207,6 +242,7 @@ def execute_edl(
     temp_dir = tempfile.mkdtemp(prefix="cutagent_")
     results: dict[int, str] = {}  # op_index -> output file path
     named_results: dict[str, str] = {}  # op_id -> output file path
+    split_segments: dict[int, list[str]] = {}  # op_index -> list of segment output paths
     all_warnings: list[str] = []
 
     try:
@@ -215,8 +251,10 @@ def execute_edl(
             if progress_callback:
                 progress_callback(idx + 1, total_ops, op_name, "running")
 
-            result = _execute_operation(op, idx, results, temp_dir, codec, edl.inputs, named_results)
+            result = _execute_operation(op, idx, results, temp_dir, codec, edl.inputs, named_results, split_segments)
             results[idx] = result.output_path
+            if hasattr(result, "_split_segments"):
+                split_segments[idx] = result._split_segments
             if getattr(op, "id", None):
                 named_results[op.id] = result.output_path
             all_warnings.extend(result.warnings)
@@ -252,35 +290,45 @@ def execute_edl(
 
 
 def _execute_operation(
-    op,
+    op: Any,
     idx: int,
     results: dict[int, str],
     temp_dir: str,
     codec: str,
     inputs: list[str] | None = None,
     named_results: dict[str, str] | None = None,
+    split_segments: dict[int, list[str]] | None = None,
 ) -> OperationResult:
     """Execute a single operation and return its result."""
     ext = ".mp4"  # default output extension
     nr = named_results or {}
 
     if isinstance(op, TrimOp):
-        source = _resolve_source(op.source, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return trim(source, op.start, op.end, out, codec=codec)
 
     if isinstance(op, SplitOp):
-        source = _resolve_source(op.source, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         prefix = str(Path(temp_dir) / f"op_{idx:03d}")
         split_results = split(source, op.points, prefix, codec=codec)
         if split_results:
-            return split_results[0]
+            # We return the first segment as the default result for backward compatibility
+            # but we register all segments so they can be referenced via $idx.0, $idx.1, etc.
+            # E.g. $2 -> $2.0. If the user wants segment 1, they use $2.1
+            res = split_results[0]
+            # Monkey-patch an attribute so execute_edl can extract them if it wants,
+            # though the cleaner way would be adjusting the resolution logic. Let's do it right.
+            # Wait, our resolution logic relies on string keys for named_results or int keys for results.
+            # We'll update the results dict after this function returns.
+            setattr(res, "_split_segments", [s.output_path for s in split_results])
+            return res
         return OperationResult(success=True, output_path=prefix)
 
     if isinstance(op, ConcatOp):
-        segments = _resolve_segments(op.segments, results, inputs, nr)
+        segments = _resolve_segments(op.segments, results, inputs, nr, split_segments)
         ext = Path(segments[0]).suffix if segments else ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return concat(
@@ -292,19 +340,19 @@ def _execute_operation(
         )
 
     if isinstance(op, ReorderOp):
-        segments = _resolve_segments(op.segments, results, inputs, nr)
+        segments = _resolve_segments(op.segments, results, inputs, nr, split_segments)
         ext = Path(segments[0]).suffix if segments else ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return reorder(segments, op.order, out, codec=codec)
 
     if isinstance(op, ExtractOp):
-        source = _resolve_source(op.source, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
         ext = ".aac" if op.stream == "audio" else Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return extract_stream(source, op.stream, out)
 
     if isinstance(op, FadeOp):
-        source = _resolve_source(op.source, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         out = op.output or str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return fade(
@@ -316,7 +364,7 @@ def _execute_operation(
         )
 
     if isinstance(op, SpeedOp):
-        source = _resolve_source(op.source, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return speed(
@@ -327,8 +375,8 @@ def _execute_operation(
         )
 
     if isinstance(op, MixAudioOp):
-        source = _resolve_source(op.source, results, inputs, nr)
-        audio = _resolve_source(op.audio, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
+        audio = _resolve_source(op.audio, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return mix_audio(
@@ -338,7 +386,7 @@ def _execute_operation(
         )
 
     if isinstance(op, VolumeOp):
-        source = _resolve_source(op.source, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return adjust_volume(
@@ -348,14 +396,14 @@ def _execute_operation(
         )
 
     if isinstance(op, ReplaceAudioOp):
-        source = _resolve_source(op.source, results, inputs, nr)
-        audio = _resolve_source(op.audio, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
+        audio = _resolve_source(op.audio, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return replace_audio(source, audio, out, codec=codec)
 
     if isinstance(op, NormalizeOp):
-        source = _resolve_source(op.source, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return normalize_audio(
@@ -366,7 +414,7 @@ def _execute_operation(
         )
 
     if isinstance(op, TextOp):
-        source = _resolve_source(op.source, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return add_text(
@@ -375,10 +423,10 @@ def _execute_operation(
         )
 
     if isinstance(op, AnimateOp):
-        source = _resolve_source(op.source, results, inputs, nr)
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
         for layer in op.layers:
             if layer.type == "image" and layer.path:
-                layer.path = _resolve_source(layer.path, results, inputs, nr)
+                layer.path = _resolve_source(layer.path, results, inputs, nr, split_segments)
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return animate(

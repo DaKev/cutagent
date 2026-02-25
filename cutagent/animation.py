@@ -151,7 +151,7 @@ def _build_segments_expr(
     # For each adjacent pair, add an if(lt(t, t_end), lerp_segment, ...)
     # End: hold last value
 
-    segments: list[str] = []
+    segments: list[tuple[float, str]] = []
     for i in range(len(kfs) - 1):
         t0, v0 = kfs[i]
         t1, v1 = kfs[i + 1]
@@ -192,7 +192,7 @@ def _build_spring_expr(
     first_val = kfs[0][1]
     last_val = kfs[-1][1]
 
-    segments: list[str] = []
+    segments: list[tuple[float, str]] = []
     for i in range(len(kfs) - 1):
         t0, v0 = kfs[i]
         t1, v1 = kfs[i + 1]

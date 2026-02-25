@@ -1,11 +1,13 @@
 """Shared test fixtures — generates small test videos using FFmpeg."""
 
 import subprocess
+from typing import Any
+
 import pytest
 
 
 @pytest.fixture(scope="session")
-def test_video(tmp_path_factory) -> str:
+def test_video(tmp_path_factory: Any) -> str:
     """Generate a 5-second 640x480 test video with audio at session scope."""
     out = str(tmp_path_factory.mktemp("media") / "test.mp4")
     subprocess.run([
@@ -23,7 +25,7 @@ def test_video(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="session")
-def test_video_10s(tmp_path_factory) -> str:
+def test_video_10s(tmp_path_factory: Any) -> str:
     """Generate a 10-second test video for split/trim testing."""
     out = str(tmp_path_factory.mktemp("media") / "test_10s.mp4")
     subprocess.run([
@@ -39,7 +41,7 @@ def test_video_10s(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="session")
-def test_video_with_silence(tmp_path_factory) -> str:
+def test_video_with_silence(tmp_path_factory: Any) -> str:
     """Generate a 3-second test video with silence-tone-silence audio."""
     out = str(tmp_path_factory.mktemp("media") / "test_silence.mp4")
     subprocess.run([
@@ -60,7 +62,7 @@ def test_video_with_silence(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="session")
-def test_audio_file(tmp_path_factory) -> str:
+def test_audio_file(tmp_path_factory: Any) -> str:
     """Generate a 5-second standalone audio file (sine wave)."""
     out = str(tmp_path_factory.mktemp("media") / "test_audio.aac")
     subprocess.run([
@@ -73,7 +75,7 @@ def test_audio_file(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="session")
-def test_video_with_beats(tmp_path_factory) -> str:
+def test_video_with_beats(tmp_path_factory: Any) -> str:
     """Generate a 4-second video with rhythmic pulsed audio for beat detection.
 
     Produces repeating silence-tone-silence-tone pattern at ~2Hz (120 BPM).
@@ -110,6 +112,6 @@ def test_video_with_beats(tmp_path_factory) -> str:
 
 
 @pytest.fixture
-def output_dir(tmp_path) -> str:
+def output_dir(tmp_path: Any) -> str:
     """Provide a temporary output directory for each test."""
     return str(tmp_path)

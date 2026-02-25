@@ -2,13 +2,14 @@
 
 import os
 import subprocess
+from typing import Any, Generator
 
 import pytest
-from cutagent.text_ops import add_text
-from cutagent.models import TextEntry
-from cutagent.errors import CutAgentError
-from cutagent.validation import validate_edl
 
+from cutagent.errors import CutAgentError
+from cutagent.models import TextEntry
+from cutagent.text_ops import add_text
+from cutagent.validation import validate_edl
 
 # ---------------------------------------------------------------------------
 # Drawtext availability check
@@ -57,7 +58,7 @@ requires_drawtext = pytest.mark.skipif(
 
 
 @pytest.fixture(autouse=True)
-def _use_drawtext_ffmpeg():
+def _use_drawtext_ffmpeg() -> Generator[None, None, None]:
     """Ensure cutagent uses an FFmpeg binary that has the drawtext filter."""
     if _drawtext_ffmpeg is None:
         yield
@@ -80,7 +81,7 @@ def _use_drawtext_ffmpeg():
 
 @requires_drawtext
 class TestAddTextBasic:
-    def test_single_centered_text(self, test_video, output_dir):
+    def test_single_centered_text(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "text_center.mp4")
         entries = [TextEntry(text="Hello World")]
         result = add_text(test_video, entries, out)
@@ -88,14 +89,14 @@ class TestAddTextBasic:
         assert os.path.exists(out)
         assert result.duration_seconds is not None
 
-    def test_text_with_custom_font_size(self, test_video, output_dir):
+    def test_text_with_custom_font_size(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "text_large.mp4")
         entries = [TextEntry(text="Big Title", font_size=72, font_color="yellow")]
         result = add_text(test_video, entries, out)
         assert result.success
         assert os.path.exists(out)
 
-    def test_text_with_background(self, test_video, output_dir):
+    def test_text_with_background(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "text_bg.mp4")
         entries = [TextEntry(
             text="With Background",
@@ -106,7 +107,7 @@ class TestAddTextBasic:
         assert result.success
         assert os.path.exists(out)
 
-    def test_text_with_timing(self, test_video, output_dir):
+    def test_text_with_timing(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "text_timed.mp4")
         entries = [TextEntry(text="Timed Text", start="0", end="2")]
         result = add_text(test_video, entries, out)
@@ -120,14 +121,14 @@ class TestAddTextPositions:
         "center", "top-center", "bottom-center",
         "top-left", "top-right", "bottom-left", "bottom-right",
     ])
-    def test_position_presets(self, test_video, output_dir, position):
+    def test_position_presets(self, test_video: Any, output_dir: Any, position: Any) -> None:
         out = os.path.join(output_dir, f"text_{position}.mp4")
         entries = [TextEntry(text=f"At {position}", position=position)]
         result = add_text(test_video, entries, out)
         assert result.success
         assert os.path.exists(out)
 
-    def test_custom_xy_position(self, test_video, output_dir):
+    def test_custom_xy_position(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "text_custom_pos.mp4")
         entries = [TextEntry(text="Custom XY", position="100,200")]
         result = add_text(test_video, entries, out)
@@ -137,7 +138,7 @@ class TestAddTextPositions:
 
 @requires_drawtext
 class TestAddTextMultipleEntries:
-    def test_two_entries(self, test_video, output_dir):
+    def test_two_entries(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "text_multi.mp4")
         entries = [
             TextEntry(text="Title", position="top-center", font_size=72),
@@ -147,7 +148,7 @@ class TestAddTextMultipleEntries:
         assert result.success
         assert os.path.exists(out)
 
-    def test_timed_entries(self, test_video, output_dir):
+    def test_timed_entries(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "text_multi_timed.mp4")
         entries = [
             TextEntry(text="First", start="0", end="2"),
@@ -160,34 +161,34 @@ class TestAddTextMultipleEntries:
 
 @requires_drawtext
 class TestAddTextErrors:
-    def test_empty_entries(self, test_video, output_dir):
+    def test_empty_entries(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "bad.mp4")
         with pytest.raises(CutAgentError) as exc_info:
             add_text(test_video, [], out)
         assert exc_info.value.code == "EMPTY_TEXT_ENTRIES"
 
-    def test_invalid_font_size(self, test_video, output_dir):
+    def test_invalid_font_size(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "bad.mp4")
         entries = [TextEntry(text="Bad", font_size=0)]
         with pytest.raises(CutAgentError) as exc_info:
             add_text(test_video, entries, out)
         assert exc_info.value.code == "INVALID_FONT_SIZE"
 
-    def test_negative_font_size(self, test_video, output_dir):
+    def test_negative_font_size(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "bad.mp4")
         entries = [TextEntry(text="Bad", font_size=-10)]
         with pytest.raises(CutAgentError) as exc_info:
             add_text(test_video, entries, out)
         assert exc_info.value.code == "INVALID_FONT_SIZE"
 
-    def test_invalid_position(self, test_video, output_dir):
+    def test_invalid_position(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "bad.mp4")
         entries = [TextEntry(text="Bad", position="nowhere")]
         with pytest.raises(CutAgentError) as exc_info:
             add_text(test_video, entries, out)
         assert exc_info.value.code == "INVALID_TEXT_POSITION"
 
-    def test_invalid_timing_start_after_end(self, test_video, output_dir):
+    def test_invalid_timing_start_after_end(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "bad.mp4")
         entries = [TextEntry(text="Bad", start="5", end="2")]
         with pytest.raises(CutAgentError) as exc_info:
@@ -201,7 +202,7 @@ class TestAddTextErrors:
 
 @requires_drawtext
 class TestTextEDLIntegration:
-    def test_text_in_edl(self, test_video, output_dir):
+    def test_text_in_edl(self, test_video: Any, output_dir: Any) -> None:
         """Text operation works in a multi-step EDL."""
         from cutagent.engine import execute_edl
         out = os.path.join(output_dir, "edl_text.mp4")
@@ -227,7 +228,7 @@ class TestTextEDLIntegration:
 # ---------------------------------------------------------------------------
 
 class TestTextValidation:
-    def test_valid_text_edl(self, test_video):
+    def test_valid_text_edl(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -242,7 +243,7 @@ class TestTextValidation:
         result = validate_edl(edl)
         assert result.valid
 
-    def test_validate_empty_entries(self, test_video):
+    def test_validate_empty_entries(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -256,7 +257,7 @@ class TestTextValidation:
         codes = [e["code"] for e in result.errors]
         assert "EMPTY_TEXT_ENTRIES" in codes
 
-    def test_validate_invalid_position(self, test_video):
+    def test_validate_invalid_position(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -273,7 +274,7 @@ class TestTextValidation:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_TEXT_POSITION" in codes
 
-    def test_validate_invalid_font_size(self, test_video):
+    def test_validate_invalid_font_size(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -290,7 +291,7 @@ class TestTextValidation:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_FONT_SIZE" in codes
 
-    def test_validate_invalid_timing(self, test_video):
+    def test_validate_invalid_timing(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -307,7 +308,7 @@ class TestTextValidation:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_TEXT_TIMING" in codes
 
-    def test_validate_custom_xy_position(self, test_video):
+    def test_validate_custom_xy_position(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -322,7 +323,7 @@ class TestTextValidation:
         result = validate_edl(edl)
         assert result.valid
 
-    def test_validate_preserves_duration(self, test_video):
+    def test_validate_preserves_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -345,7 +346,7 @@ class TestTextValidation:
 # ---------------------------------------------------------------------------
 
 class TestTextModels:
-    def test_text_entry_to_dict(self):
+    def test_text_entry_to_dict(self) -> None:
         entry = TextEntry(text="Hello", position="center", font_size=48)
         d = entry.to_dict()
         assert d["text"] == "Hello"
@@ -353,7 +354,7 @@ class TestTextModels:
         assert d["font_size"] == 48
         assert "bg_color" not in d  # None values excluded
 
-    def test_text_entry_from_dict(self):
+    def test_text_entry_from_dict(self) -> None:
         data = {"text": "Hi", "position": "top-left", "font_size": 72}
         entry = TextEntry.from_dict(data)
         assert entry.text == "Hi"
@@ -361,7 +362,7 @@ class TestTextModels:
         assert entry.font_size == 72
         assert entry.bg_color is None
 
-    def test_text_entry_roundtrip(self):
+    def test_text_entry_roundtrip(self) -> None:
         original = TextEntry(
             text="Test", position="bottom-center", font_size=36,
             font_color="red", start="1", end="5",
@@ -374,7 +375,7 @@ class TestTextModels:
         assert restored.font_size == original.font_size
         assert restored.bg_color == original.bg_color
 
-    def test_text_op_to_dict(self):
+    def test_text_op_to_dict(self) -> None:
         from cutagent.models import TextOp
         op = TextOp(
             source="$input.0",
@@ -386,7 +387,7 @@ class TestTextModels:
         assert len(d["entries"]) == 1
         assert d["entries"][0]["text"] == "Title"
 
-    def test_text_op_parse(self):
+    def test_text_op_parse(self) -> None:
         from cutagent.models import parse_operation
         data = {
             "op": "text",
@@ -401,7 +402,7 @@ class TestTextModels:
         assert op.entries[0].text == "Hello"
         assert op.entries[0].font_size == 72
 
-    def test_text_entry_shadow_stroke_roundtrip(self):
+    def test_text_entry_shadow_stroke_roundtrip(self) -> None:
         entry = TextEntry(
             text="Styled",
             shadow_color="black",
@@ -418,7 +419,7 @@ class TestTextModels:
         assert restored.shadow_color == "black"
         assert restored.stroke_color == "navy"
 
-    def test_text_entry_no_shadow_stroke_excludes_fields(self):
+    def test_text_entry_no_shadow_stroke_excludes_fields(self) -> None:
         entry = TextEntry(text="Plain")
         d = entry.to_dict()
         assert "shadow_color" not in d

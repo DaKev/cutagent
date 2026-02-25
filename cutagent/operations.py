@@ -6,18 +6,18 @@ import tempfile
 from pathlib import Path
 
 from cutagent.errors import (
-    CutAgentError,
-    TRIM_START_AFTER_END,
-    TRIM_BEYOND_DURATION,
-    SPLIT_POINT_BEYOND_DURATION,
     INVALID_STREAM_TYPE,
     REORDER_INDEX_OUT_OF_RANGE,
+    SPLIT_POINT_BEYOND_DURATION,
+    TRIM_BEYOND_DURATION,
+    TRIM_START_AFTER_END,
+    CutAgentError,
     recovery_hints,
 )
 from cutagent.ffmpeg import run_ffmpeg
-from cutagent.models import OperationResult, parse_time, format_time
-from cutagent.probe import probe as probe_file, keyframes as get_keyframes
-
+from cutagent.models import OperationResult, format_time, parse_time
+from cutagent.probe import keyframes as get_keyframes
+from cutagent.probe import probe as probe_file
 
 # ---------------------------------------------------------------------------
 # Trim
@@ -275,7 +275,7 @@ def _concat_crossfade(
     has_audio = all(p.audio_stream is not None for p in probes)
 
     # Detect fps from first segment
-    fps = 30
+    fps: float = 30
     video_stream = probes[0].video_stream
     if video_stream and video_stream.fps:
         fps = video_stream.fps
