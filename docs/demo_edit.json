@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "inputs": ["demo.mp4"],
+  "operations": [
+    {"op": "trim", "source": "$input.0", "start": "0", "end": "2"}
+  ],
+  "output": {"path": "clip.mp4", "codec": "libx264"}
+}

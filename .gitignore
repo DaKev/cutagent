@@ -39,5 +39,10 @@ Thumbs.db
 # FFmpeg temp files
 cutagent_*/
 
+# VHS demo artifacts (created when running docs/demo.tape)
+demo.mp4
+clip.mp4
+out.mp4
+
 # Test video files (too large for git)
 tests/Test videos/

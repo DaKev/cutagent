@@ -1,10 +1,12 @@
 # CutAgent
 
-**Agent-first video cutting library** — declarative JSON edits powered by FFmpeg.
+**FFmpeg for AI agents** — every command returns structured JSON with recovery hints.
 
 [![CI](https://github.com/DaKev/cutagent/actions/workflows/ci.yml/badge.svg)](https://github.com/DaKev/cutagent/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+![CutAgent demo: probe, scenes, EDL, error recovery](docs/demo.gif)
 
 CutAgent is designed from the ground up for **AI agents** and **programmatic video editing**. Every CLI command outputs structured JSON. Every operation is composable through a declarative Edit Decision List (EDL) format. No GUI, no human-formatted text — just clean machine-readable interfaces for professional video cutting.
 
@@ -18,6 +20,15 @@ CutAgent is designed from the ground up for **AI agents** and **programmatic vid
 - **Audio polish**: Mix background music, adjust volume, replace audio, normalize loudness (EBU R128)
 - **Text & motion graphics**: Burn-in titles, lower-thirds, annotations, and keyframe-driven animations
 - **Structured errors**: Error codes, recovery hints, and context in every failure response
+
+| Dimension | CutAgent | MoviePy | ffmpeg-python | raw FFmpeg |
+|-----------|----------|---------|---------------|------------|
+| Output format | Structured JSON | Python objects / text | N/A (returns nothing) | Human text |
+| Error handling | Codes + recovery hints | Exceptions | Exceptions | Unstructured stderr |
+| Agent-friendly | Yes | Partial | No | No |
+| Declarative EDL | Yes | No | No | No |
+| Content intelligence | Scenes, silence, beats | Limited | No | Manual |
+| Zero extra deps | Python + FFmpeg | NumPy, etc. | FFmpeg | FFmpeg |
 
 ## Requirements
 
@@ -181,6 +192,29 @@ The Edit Decision List is a declarative JSON format for multi-step edits. Operat
 ```
 
 **Available operations:** `trim`, `split`, `concat`, `reorder`, `extract`, `fade`, `speed`, `mix_audio`, `volume`, `replace_audio`, `normalize`, `text`, `animate`
+
+## For Agent/MCP Authors
+
+CutAgent exposes tool schemas and CLI commands designed for LLM tool use and MCP integration. Use `cutagent.tools` to get JSON schema definitions for your agent's tool registry, then invoke the CLI and parse the structured output.
+
+```python
+import json
+import subprocess
+
+# Get tool definitions for your LLM
+from cutagent.tools import dump_all_schemas
+schemas = json.loads(dump_all_schemas())
+
+# Invoke CLI and parse JSON output
+result = subprocess.run(
+    ["cutagent", "probe", "video.mp4"],
+    capture_output=True, text=True, check=False
+)
+info = json.loads(result.stdout)
+
+# Validate EDL before execute
+subprocess.run(["cutagent", "validate", "edit.json"], check=True)
+```
 
 ## Screen Recording Pipeline
 
