@@ -1,10 +1,18 @@
-"""AI-native CLI using Typer — every command outputs JSON to stdout."""
+"""AI-native CLI using Typer — every command outputs JSON/NDJSON to stdout."""
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 from cutagent.errors import EXIT_EXECUTION, EXIT_SUCCESS, CutAgentError
+from cutagent.input_hardening import (
+    apply_field_mask,
+    sanitize_data,
+    to_ndjson,
+    validate_resource_token,
+    validate_safe_output_path,
+)
 
 # Ensure we define the same variables as the old cli to avoid import errors
 __all__ = [
@@ -19,7 +27,6 @@ __all__ = [
 
 def json_out(data: dict[str, Any], exit_code: int = EXIT_SUCCESS) -> int:
     """Print JSON to stdout and return exit code."""
-    import sys
     print(json.dumps(data, indent=2))
     sys.stdout.flush()
     return exit_code
@@ -39,12 +46,38 @@ def read_json_arg(inline: str | None, file_path: str | None, json_attr: str, fil
     if inline is not None:
         return inline
     if file_path is not None:
+        validate_resource_token(file_path, file_attr)
         return Path(file_path).read_text()
     raise CutAgentError(
         code="MISSING_FIELD",
         message=f"Either --{json_attr.replace('_', '-')} or --{file_attr.replace('_', '-')} is required",
         recovery=[f"Provide one of --{json_attr.replace('_', '-')} or --{file_attr.replace('_', '-')}"]
     )
+
+
+def json_out_shaped(
+    data: dict[str, Any] | list[Any],
+    exit_code: int = EXIT_SUCCESS,
+    *,
+    fields: str | None = None,
+    response_format: str = "json",
+    ndjson_key: str | None = None,
+    sanitize_mode: str | None = None,
+) -> int:
+    """Print shaped JSON or NDJSON output and return an exit code."""
+    sanitized = sanitize_data(data, sanitize_mode)
+    projected = apply_field_mask(sanitized, fields)
+    if response_format == "ndjson":
+        print(to_ndjson(projected, list_key=ndjson_key))
+    else:
+        print(json.dumps(projected, indent=2))
+    sys.stdout.flush()
+    return exit_code
+
+
+def validate_output_arg(path_value: str, field_name: str = "output") -> str:
+    """Validate and normalize CLI output path arguments."""
+    return validate_safe_output_path(path_value, field_name=field_name)
 
 def review_timestamps_from_entries(entries: list[Any]) -> list[float]:
     """Compute midpoint timestamps for visual review of text entries."""
