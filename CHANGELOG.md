@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `schema` CLI command for runtime schema introspection (`index`, `operation`, `edl`, `command`, `capabilities`)
+- Payload-first `op` CLI command to execute single EDL operations from raw JSON (`--json` / `--params-file`)
+- `--dry-run` support on `execute` for validation-only safety rails
+- Optional `--sanitize-output basic` mode for agent-facing output sanitization
+- New agent guidance docs: `AGENTS.md` and `CONTEXT.md`
+- `--fields` response projection and `--response-format ndjson` support on high-volume analysis commands (`probe`, `scenes`, `frames`, `audio-levels`, `summarize`)
+- New tool schema exports in `cutagent.tools`: `cutagent_schema` and `cutagent_op`
+
+### Changed
+
+- CLI architecture now uses the Typer package implementation as the single runtime surface (removed legacy duplicate `cutagent/cli.py`)
+- Centralized input hardening for common agent failure modes (control chars, malformed tokens, unsafe output paths)
+
 ## [0.3.0] - 2026-02-18
 
 ### Added

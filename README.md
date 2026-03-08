@@ -120,6 +120,49 @@ result = execute_edl(edl)
 cutagent capabilities
 ```
 
+### Agent-First Payload Workflow
+
+CutAgent now supports a payload-first execution path for single operations:
+
+```bash
+# 1) Discover schemas at runtime
+cutagent schema index
+cutagent schema operation trim
+cutagent schema edl
+
+# 2) Dry-run a single operation payload (no media mutation)
+cutagent op trim --dry-run --json '{
+  "source": "input.mp4",
+  "start": "00:00:01",
+  "end": "00:00:05",
+  "output": {"path": "clip.mp4", "codec": "copy"}
+}'
+
+# 3) Execute after validation
+cutagent op trim --json '{
+  "source": "input.mp4",
+  "start": "00:00:01",
+  "end": "00:00:05",
+  "output": {"path": "clip.mp4", "codec": "copy"}
+}'
+```
+
+For large analysis responses, shape output to protect agent context:
+
+```bash
+# Keep only selected fields
+cutagent probe input.mp4 --fields path,duration,width,height
+
+# Stream heavy list responses as NDJSON
+cutagent scenes input.mp4 --response-format ndjson
+```
+
+Optional response sanitization for agent-facing reads:
+
+```bash
+cutagent execute edit.json --dry-run --sanitize-output basic
+```
+
 #### 1. Analyze
 
 ```bash
@@ -214,6 +257,9 @@ info = json.loads(result.stdout)
 
 # Validate EDL before execute
 subprocess.run(["cutagent", "validate", "edit.json"], check=True)
+
+# Runtime schema introspection from CLI
+subprocess.run(["cutagent", "schema", "operation", "trim"], check=True)
 ```
 
 ## Screen Recording Pipeline
@@ -322,8 +368,8 @@ print(result.to_dict())
 ┌──────────────────────────────────────────────────────────────────┐
 │                     cutagent (CLI / Python API)                  │
 ├──────────────────┬─────────────────┬─────────────────────────────┤
-│  cli.py          │  engine.py      │  validation.py              │
-│  JSON output     │  EDL execution  │  Dry-run validation         │
+│  cli/__init__.py │  engine.py      │  validation.py              │
+│  CLI composition │  EDL execution  │  Dry-run validation         │
 ├──────────────────┼─────────────────┼─────────────────────────────┤
 │  probe.py        │  operations.py  │  models.py                  │
 │  Media analysis  │  Video ops      │  Typed dataclasses          │

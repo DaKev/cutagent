@@ -325,6 +325,36 @@ class TestInputRefValidation:
         assert result.valid
 
 
+class TestInputHardeningValidation:
+    """Tests for hallucination-resistant input hardening."""
+
+    def test_rejects_query_fragments_in_source(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": f"{test_video}?fields=name", "start": "0", "end": "1"},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        assert any(e["code"] == "INVALID_ARGUMENT" for e in result.errors)
+
+    def test_rejects_parent_traversal_in_output(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": test_video, "start": "0", "end": "1"},
+            ],
+            "output": {"path": "../out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        assert any(e["code"] == "INVALID_ARGUMENT" for e in result.errors)
+
+
 class TestAnimateValidation:
     """Tests for AnimateOp validation in EDL."""
 

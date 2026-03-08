@@ -65,7 +65,7 @@ Open a [feature request](../../issues/new?template=feature_request.md). Since Cu
 CutAgent has a layered architecture. Please respect these boundaries:
 
 ```
-cli.py          → CLI parsing, JSON output (no business logic)
+cli/__init__.py + cli/*.py → CLI command composition and JSON output (no business logic)
 engine.py       → EDL parsing and execution orchestration
 operations.py   → Individual video operations (trim, split, concat, etc.)
 probe.py        → Media inspection and content intelligence
@@ -152,8 +152,8 @@ When adding a new operation type:
 3. Implement the operation in `operations.py`
 4. Add execution handling in `engine.py` (`_execute_operation`)
 5. Add validation in `validation.py`
-6. Add a CLI subcommand in `cli.py`
-7. Add the capability schema in `cmd_capabilities`
+6. Add/update the relevant Typer subcommand in `cutagent/cli/*.py`
+7. Add/update the machine-readable capability schema in `cutagent/cli/system.py`
 8. Add tests for the operation, engine integration, and validation
 
 ## Code of Conduct
