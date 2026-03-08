@@ -37,6 +37,7 @@ from cutagent.models import (
     parse_time,
 )
 from cutagent.probe import probe
+from cutagent.input_hardening import validate_resource_token, validate_safe_output_path
 
 _CUSTOM_POS_RE = re.compile(r"^\d+\s*,\s*\d+$")
 
@@ -195,6 +196,11 @@ def validate_edl(raw: str | dict[str, Any]) -> ValidationResult:
     file_durations: dict[str, float] = {}
     file_resolutions: dict[str, tuple[int | None, int | None]] = {}
     for input_path in edl.inputs:
+        try:
+            validate_resource_token(input_path, "inputs[]")
+        except CutAgentError as exc:
+            result.add_error(exc.code, exc.message, **exc.context)
+            continue
         if not Path(input_path).exists():
             result.add_error("INPUT_NOT_FOUND", f"Input file not found: {input_path}", path=input_path)
         else:
@@ -234,7 +240,13 @@ def validate_edl(raw: str | dict[str, Any]) -> ValidationResult:
         result.estimated_duration = last_est
 
     # Check output directory
-    output_dir = Path(edl.output.path).parent
+    try:
+        normalized_output = validate_safe_output_path(edl.output.path, field_name="output.path")
+    except CutAgentError as exc:
+        result.add_error(exc.code, exc.message, **exc.context)
+        return result
+
+    output_dir = Path(normalized_output).parent
     if str(output_dir) != "." and not output_dir.exists():
         result.add_warning(
             "OUTPUT_DIR_NOT_FOUND",
@@ -305,6 +317,12 @@ def _validate_source(
     named_ops: dict[str, int] | None = None,
 ) -> None:
     """Check that a source is a valid $input.N, $name, $N reference, or file path."""
+    try:
+        validate_resource_token(source, "source")
+    except CutAgentError as exc:
+        result.add_error(exc.code, exc.message, **exc.context)
+        return
+
     if _is_input_reference(source):
         idx = int(source[len("$input."):])
         if idx < 0 or idx >= input_count:

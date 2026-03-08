@@ -16,6 +16,7 @@ from cutagent.errors import (
     recovery_hints,
 )
 from cutagent.ffmpeg import run_ffmpeg
+from cutagent.input_hardening import validate_resource_token, validate_safe_output_path
 from cutagent.models import TEXT_POSITIONS, OperationResult, TextEntry, parse_time
 from cutagent.probe import probe as probe_file
 
@@ -159,6 +160,9 @@ def add_text(
     Returns:
         OperationResult with the output path.
     """
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
     if not entries:
         raise CutAgentError(
             code=EMPTY_TEXT_ENTRIES,

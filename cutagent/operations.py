@@ -15,6 +15,7 @@ from cutagent.errors import (
     recovery_hints,
 )
 from cutagent.ffmpeg import run_ffmpeg
+from cutagent.input_hardening import validate_resource_token, validate_safe_output_path
 from cutagent.models import OperationResult, format_time, parse_time
 from cutagent.probe import keyframes as get_keyframes
 from cutagent.probe import probe as probe_file
@@ -42,6 +43,9 @@ def trim(
     Returns:
         OperationResult with output path and warnings.
     """
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
     start_sec = parse_time(start)
     end_sec = parse_time(end)
 
@@ -135,6 +139,9 @@ def split(
     Returns:
         List of OperationResult, one per segment.
     """
+    validate_resource_token(source, "source")
+    output_prefix = validate_safe_output_path(output_prefix, field_name="prefix")
+
     info = probe_file(source)
     ext = Path(source).suffix
 
@@ -198,6 +205,10 @@ def concat(
     Returns:
         OperationResult with the merged output.
     """
+    output = validate_safe_output_path(output, field_name="output")
+    for seg in segments:
+        validate_resource_token(seg, "segments[]")
+
     if transition is not None:
         if transition != "crossfade":
             raise ValueError("transition must be None or 'crossfade'")
@@ -362,6 +373,10 @@ def reorder(
     Returns:
         OperationResult with the reordered output.
     """
+    output = validate_safe_output_path(output, field_name="output")
+    for seg in segments:
+        validate_resource_token(seg, "segments[]")
+
     for idx in order:
         if idx < 0 or idx >= len(segments):
             raise CutAgentError(
@@ -394,6 +409,9 @@ def extract_stream(
     Returns:
         OperationResult with the extracted stream.
     """
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
     if stream not in ("audio", "video"):
         raise CutAgentError(
             code=INVALID_STREAM_TYPE,
@@ -432,6 +450,9 @@ def speed(
     Returns:
         OperationResult with output path.
     """
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
     if factor <= 0:
         raise ValueError("factor must be > 0")
     if factor < 0.25 or factor > 100.0:
@@ -479,6 +500,9 @@ def fade(
     codec: str = "libx264",
 ) -> OperationResult:
     """Apply audio/video fade-in and fade-out effects to a clip."""
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
     if fade_in < 0 or fade_out < 0:
         raise ValueError("fade_in and fade_out must be >= 0")
     if fade_in == 0 and fade_out == 0:

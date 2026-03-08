@@ -36,6 +36,11 @@ from cutagent.models import (
 )
 from cutagent.operations import concat, extract_stream, fade, reorder, speed, split, trim
 from cutagent.text_ops import add_text
+from cutagent.input_hardening import (
+    reject_control_chars,
+    validate_resource_token,
+    validate_safe_output_path,
+)
 
 # ---------------------------------------------------------------------------
 # Reference resolution
@@ -149,6 +154,7 @@ def _resolve_source(
     split_segments: dict[int, list[str]] | None = None,
 ) -> str:
     """Resolve a source field — $input.N, $name, $N reference, or file path."""
+    validate_resource_token(value, "source")
     if inputs is not None and _is_input_reference(value):
         return _resolve_input_ref(value, inputs)
     if _is_reference(value):
@@ -186,6 +192,7 @@ def parse_edl(raw: str | dict[str, Any]) -> EDL:
         CutAgentError: If the EDL is malformed.
     """
     if isinstance(raw, str):
+        reject_control_chars(raw, "edl")
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -234,6 +241,7 @@ def execute_edl(
     """
     edl = parse_edl(raw)
     output_spec = edl.output
+    output_path = validate_safe_output_path(output_spec.path, field_name="output.path")
     codec = output_spec.codec
 
     total_ops = len(edl.operations)
@@ -266,7 +274,6 @@ def execute_edl(
         if results:
             last_idx = len(edl.operations) - 1
             final_temp = results[last_idx]
-            output_path = output_spec.path
 
             # Ensure output directory exists
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -280,7 +287,7 @@ def execute_edl(
 
         return OperationResult(
             success=True,
-            output_path=output_spec.path,
+            output_path=output_path,
             warnings=all_warnings,
         )
 

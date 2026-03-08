@@ -11,6 +11,7 @@ from cutagent.errors import (
     recovery_hints,
 )
 from cutagent.ffmpeg import run_ffmpeg
+from cutagent.input_hardening import validate_resource_token, validate_safe_output_path
 from cutagent.models import OperationResult
 from cutagent.probe import probe as probe_file
 
@@ -51,6 +52,10 @@ def mix_audio(
     Returns:
         OperationResult with the mixed output.
     """
+    validate_resource_token(source, "source")
+    validate_resource_token(audio, "audio")
+    output = validate_safe_output_path(output, field_name="output")
+
     if mix_level < 0.0 or mix_level > 1.0:
         raise CutAgentError(
             code=INVALID_MIX_LEVEL,
@@ -107,6 +112,9 @@ def adjust_volume(
     Returns:
         OperationResult with the adjusted output.
     """
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
     if gain_db < -60.0 or gain_db > 60.0:
         raise CutAgentError(
             code=INVALID_GAIN_VALUE,
@@ -153,6 +161,10 @@ def replace_audio(
     Returns:
         OperationResult with the replaced-audio output.
     """
+    validate_resource_token(source, "source")
+    validate_resource_token(audio, "audio")
+    output = validate_safe_output_path(output, field_name="output")
+
     info = probe_file(source)
 
     args = [
@@ -195,6 +207,9 @@ def normalize_audio(
     Returns:
         OperationResult with the normalized output.
     """
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
     if target_lufs < -70.0 or target_lufs > -5.0:
         raise CutAgentError(
             code=INVALID_NORMALIZE_TARGET,
