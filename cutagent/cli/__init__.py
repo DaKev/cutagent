@@ -3,6 +3,7 @@ import sys
 import typer
 
 from cutagent.cli.analysis import app as analysis_app
+from cutagent.cli.agent import app as agent_app
 from cutagent.cli.audio import app as audio_app
 from cutagent.cli.editing import app as editing_app
 from cutagent.cli.execution import app as execution_app
@@ -20,6 +21,7 @@ app = typer.Typer(
 # Merge all commands into the main app
 # We use add_typer without a name to keep commands at the top level
 app.add_typer(system_app, name="")
+app.add_typer(agent_app, name="")
 app.add_typer(analysis_app, name="")
 app.add_typer(editing_app, name="")
 app.add_typer(visual_app, name="")

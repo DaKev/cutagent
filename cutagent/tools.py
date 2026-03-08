@@ -3,6 +3,9 @@
 import json
 from typing import Any
 
+from cutagent.cli.system import capabilities_payload
+from cutagent.schema_registry import operation_names, schema_index
+
 
 def get_tool_schema(tool_name: str) -> dict[str, Any]:
     """Return the JSON schema tool definition for a given tool.
@@ -20,6 +23,7 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
             "function": {
                 "name": "cutagent_capabilities",
                 "description": "Discover all available video editing capabilities, operations, and the exact JSON schema for the Edit Decision List (EDL). Call this first to understand how to use CutAgent.",
+                "output_schema": capabilities_payload(),
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -100,6 +104,55 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
                 },
             },
         },
+        "cutagent_schema": {
+            "type": "function",
+            "function": {
+                "name": "cutagent_schema",
+                "description": "Query machine-readable schema metadata for CutAgent commands, EDL, and operation payloads.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target": {
+                            "type": "string",
+                            "enum": schema_index()["targets"],
+                            "description": "Schema target to inspect",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Optional name for target-specific schemas (e.g. operation name)",
+                        },
+                    },
+                    "required": ["target"],
+                },
+            },
+        },
+        "cutagent_op": {
+            "type": "function",
+            "function": {
+                "name": "cutagent_op",
+                "description": "Execute a single EDL operation via payload-first JSON envelope.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "enum": operation_names(),
+                            "description": "Operation name",
+                        },
+                        "payload": {
+                            "type": "object",
+                            "description": "Operation payload including output spec",
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Validate only without mutating media",
+                        },
+                    },
+                    "required": ["name", "payload"],
+                },
+            },
+        },
     }
 
     if tool_name not in schemas:
@@ -113,6 +166,8 @@ def dump_all_schemas() -> str:
         get_tool_schema("cutagent_capabilities"),
         get_tool_schema("cutagent_probe"),
         get_tool_schema("cutagent_summarize"),
+        get_tool_schema("cutagent_schema"),
+        get_tool_schema("cutagent_op"),
         get_tool_schema("cutagent_validate"),
         get_tool_schema("cutagent_execute"),
     ], indent=2)
