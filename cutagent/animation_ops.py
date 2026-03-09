@@ -17,6 +17,7 @@ from cutagent.errors import (
     CutAgentError,
 )
 from cutagent.ffmpeg import run_ffmpeg
+from cutagent.input_hardening import validate_resource_token, validate_safe_output_path
 from cutagent.models import (
     ANIMATION_EASINGS,
     ANIMATION_LAYER_TYPES,
@@ -229,6 +230,9 @@ def animate(
     Returns:
         OperationResult with the output path.
     """
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
     if not layers:
         raise CutAgentError(
             code=EMPTY_ANIMATION_LAYERS,
@@ -238,6 +242,8 @@ def animate(
 
     for idx, layer in enumerate(layers):
         _validate_layer(layer, idx)
+        if layer.path:
+            validate_resource_token(layer.path, "layer.path")
 
     info = probe_file(source)
 

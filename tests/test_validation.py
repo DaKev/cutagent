@@ -98,6 +98,18 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_EDL" in codes
 
+    def test_invalid_edl_version(self) -> None:
+        edl = {
+            "version": "2.0",
+            "inputs": [],
+            "operations": [],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_EDL" in codes
+
     def test_invalid_time_format(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
@@ -323,6 +335,36 @@ class TestInputRefValidation:
         }
         result = validate_edl(edl)
         assert result.valid
+
+
+class TestInputHardeningValidation:
+    """Tests for hallucination-resistant input hardening."""
+
+    def test_rejects_query_fragments_in_source(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": f"{test_video}?fields=name", "start": "0", "end": "1"},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        assert any(e["code"] == "INVALID_ARGUMENT" for e in result.errors)
+
+    def test_rejects_parent_traversal_in_output(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": test_video, "start": "0", "end": "1"},
+            ],
+            "output": {"path": "../out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        assert any(e["code"] == "INVALID_ARGUMENT" for e in result.errors)
 
 
 class TestAnimateValidation:

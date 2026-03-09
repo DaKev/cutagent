@@ -120,6 +120,51 @@ result = execute_edl(edl)
 cutagent capabilities
 ```
 
+### Agent-First Payload Workflow
+
+CutAgent now supports a payload-first execution path for single operations:
+
+```bash
+# 1) Discover schemas at runtime
+cutagent schema index
+cutagent schema operation trim
+cutagent schema edl
+
+# 2) Dry-run a single operation payload (no media mutation)
+cutagent op trim --dry-run --json '{
+  "source": "input.mp4",
+  "start": "00:00:01",
+  "end": "00:00:05",
+  "output": {"path": "clip.mp4", "codec": "copy"}
+}'
+
+# 3) Execute after validation
+cutagent op trim --json '{
+  "source": "input.mp4",
+  "start": "00:00:01",
+  "end": "00:00:05",
+  "output": {"path": "clip.mp4", "codec": "copy"}
+}'
+```
+
+For large analysis responses, shape output to protect agent context:
+
+```bash
+# Keep only selected fields
+cutagent probe input.mp4 --fields path,duration,width,height
+
+# Stream heavy list responses as NDJSON
+cutagent scenes input.mp4 --response-format ndjson
+cutagent keyframes input.mp4 --response-format ndjson --limit 100
+cutagent beats input.mp4 --response-format ndjson --limit 100 --min-strength 1.0
+```
+
+Optional response sanitization for agent-facing reads:
+
+```bash
+cutagent execute edit.json --dry-run --sanitize-output basic
+```
+
 #### 1. Analyze
 
 ```bash
@@ -127,8 +172,11 @@ cutagent probe interview.mp4                     # Media metadata
 cutagent summarize interview.mp4                  # Full content map (scenes + silence + suggested cuts)
 cutagent scenes interview.mp4 --threshold 0.3     # Scene boundaries
 cutagent silence interview.mp4                    # Silence intervals (dead air, pauses)
+cutagent silence interview.mp4 --limit 50         # Limit large silence outputs
 cutagent beats interview.mp4                      # Musical beats (for rhythm-aligned cuts)
+cutagent beats interview.mp4 --min-strength 1.0   # Keep only stronger beats
 cutagent keyframes interview.mp4                  # Keyframe positions
+cutagent keyframes interview.mp4 --limit 100      # Limit large keyframe outputs
 cutagent audio-levels interview.mp4               # Audio levels over time
 ```
 
@@ -214,6 +262,9 @@ info = json.loads(result.stdout)
 
 # Validate EDL before execute
 subprocess.run(["cutagent", "validate", "edit.json"], check=True)
+
+# Runtime schema introspection from CLI
+subprocess.run(["cutagent", "schema", "operation", "trim"], check=True)
 ```
 
 ## Screen Recording Pipeline
@@ -322,8 +373,8 @@ print(result.to_dict())
 ┌──────────────────────────────────────────────────────────────────┐
 │                     cutagent (CLI / Python API)                  │
 ├──────────────────┬─────────────────┬─────────────────────────────┤
-│  cli.py          │  engine.py      │  validation.py              │
-│  JSON output     │  EDL execution  │  Dry-run validation         │
+│  cli/__init__.py │  engine.py      │  validation.py              │
+│  CLI composition │  EDL execution  │  Dry-run validation         │
 ├──────────────────┼─────────────────┼─────────────────────────────┤
 │  probe.py        │  operations.py  │  models.py                  │
 │  Media analysis  │  Video ops      │  Typed dataclasses          │

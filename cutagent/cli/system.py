@@ -1,13 +1,25 @@
 import typer
 
 from cutagent.cli.utils import json_out
+from cutagent.schema_registry import (
+    cli_command_schema,
+    edl_schema,
+    operation_names,
+    operation_payload_schema,
+    schema_index,
+)
 
 app = typer.Typer(help="System and capability commands")
 
 @app.command("capabilities")
 def capabilities() -> int:
     """Output machine-readable schema of all operations."""
-    caps = {
+    return json_out(capabilities_payload())
+
+
+def capabilities_payload() -> dict:
+    """Return machine-readable capability data for agent clients."""
+    return {
         "version": "1.0",
         "overview": (
             "CutAgent provides analysis, editing, audio polish, and visual polish. "
@@ -410,7 +422,50 @@ def capabilities() -> int:
             "Use bg_color + shadow_color on animate text layers for readable lower-thirds",
         ],
     }
-    return json_out(caps)
+
+
+@app.command("schema")
+def schema(
+    target: str = typer.Argument("index", help="Schema target: index|edl|operation|command|capabilities"),
+    name: str | None = typer.Argument(None, help="Optional item name, e.g. operation name"),
+) -> int:
+    """Output machine-readable schema for commands, operations, and EDL."""
+    if target == "index":
+        return json_out(schema_index())
+    if target == "edl":
+        return json_out({"target": "edl", "schema": edl_schema()})
+    if target == "command":
+        return json_out({"target": "command", "schema": cli_command_schema()})
+    if target == "capabilities":
+        return json_out({"target": "capabilities", "schema": capabilities_payload()})
+    if target == "operation":
+        if not name:
+            return json_out({
+                "error": True,
+                "code": "MISSING_FIELD",
+                "message": "schema target 'operation' requires an operation name",
+                "recovery": [f"Pass one of: {', '.join(operation_names())}"],
+            }, exit_code=1)
+        try:
+            return json_out({
+                "target": "operation",
+                "name": name,
+                "schema": operation_payload_schema(name),
+            })
+        except ValueError:
+            return json_out({
+                "error": True,
+                "code": "UNKNOWN_OPERATION",
+                "message": f"Unknown operation: {name!r}",
+                "recovery": [f"Use one of: {', '.join(operation_names())}"],
+            }, exit_code=1)
+
+    return json_out({
+        "error": True,
+        "code": "INVALID_ARGUMENT",
+        "message": f"Unknown schema target: {target!r}",
+        "recovery": ["Use one of: index, edl, operation, command, capabilities"],
+    }, exit_code=1)
 
 @app.command("doctor")
 def doctor() -> int:
