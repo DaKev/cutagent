@@ -1,9 +1,15 @@
 """Tests for cutagent.doctor — diagnostic checks."""
 
-from cutagent.doctor import run_doctor
+from cutagent.doctor import _extract_version_number, run_doctor
 
 
 class TestDoctor:
+    def test_extract_version_number(self) -> None:
+        ffmpeg_line = "ffmpeg version 8.0.1 Copyright (c) 2000-2025"
+        ffprobe_line = "ffprobe version 8.0.1 Copyright (c) 2007-2025"
+        assert _extract_version_number(ffmpeg_line) == "8.0.1"
+        assert _extract_version_number(ffprobe_line) == "8.0.1"
+
     def test_returns_structured_report(self) -> None:
         result = run_doctor()
         assert "healthy" in result

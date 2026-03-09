@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +22,19 @@ def _get_version(binary_path: str) -> str | None:
         return first_line or None
     except Exception:
         return None
+
+
+_VERSION_RE = re.compile(r"\bversion\s+([0-9]+(?:\.[0-9]+){1,2})\b", re.IGNORECASE)
+
+
+def _extract_version_number(version_line: str | None) -> str | None:
+    """Extract semantic version number from a ffmpeg/ffprobe -version first line."""
+    if not version_line:
+        return None
+    match = _VERSION_RE.search(version_line)
+    if not match:
+        return None
+    return match.group(1)
 
 
 def _detect_source(binary_name: str, path: str) -> str:
@@ -181,9 +195,12 @@ def run_doctor() -> dict[str, Any]:
     ffmpeg_info = _check_binary("ffmpeg")
     ffprobe_info = _check_binary("ffprobe")
 
+    ffmpeg_version_number = _extract_version_number(ffmpeg_info["version"])
+    ffprobe_version_number = _extract_version_number(ffprobe_info["version"])
+
     versions_match = None
-    if ffmpeg_info["version"] and ffprobe_info["version"]:
-        versions_match = ffmpeg_info["version"] == ffprobe_info["version"]
+    if ffmpeg_version_number and ffprobe_version_number:
+        versions_match = ffmpeg_version_number == ffprobe_version_number
 
     checks = []
 
@@ -205,7 +222,12 @@ def run_doctor() -> dict[str, Any]:
     checks.append({
         "name": "versions_match",
         "ok": versions_match if versions_match is not None else None,
-        "detail": {"ffmpeg": ffmpeg_info["version"], "ffprobe": ffprobe_info["version"]},
+        "detail": {
+            "ffmpeg": ffmpeg_info["version"],
+            "ffprobe": ffprobe_info["version"],
+            "ffmpeg_version_number": ffmpeg_version_number,
+            "ffprobe_version_number": ffprobe_version_number,
+        },
     })
 
     # ffmpeg filters

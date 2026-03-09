@@ -1,5 +1,4 @@
 import json as _json
-import sys
 from typing import Optional
 
 import typer
@@ -72,8 +71,7 @@ def cmd_text(
         out["review_timestamps"] = review_timestamps_from_entries(entries)
         return json_out(out)
     except CutAgentError as exc:
-        code = json_error(exc)
-        sys.exit(code)
+        return json_error(exc)
     except (_json.JSONDecodeError, KeyError, TypeError) as exc:
         return json_out({
             "error": True,
@@ -114,8 +112,7 @@ def cmd_animate(
         out["review_timestamps"] = review_timestamps_from_layers(layers)
         return json_out(out)
     except CutAgentError as exc:
-        code = json_error(exc)
-        sys.exit(code)
+        return json_error(exc)
     except (_json.JSONDecodeError, KeyError, TypeError) as exc:
         return json_out({
             "error": True,

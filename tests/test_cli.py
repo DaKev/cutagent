@@ -481,3 +481,52 @@ class TestAgentFirstCli:
         assert len(lines) >= 1
         parsed = [json.loads(line) for line in lines]
         assert all("start" in item or "start_time" in item for item in parsed)
+
+
+class TestCliRegressions:
+    """Regression coverage for evaluator-reported CLI behavior."""
+
+    def test_probe_missing_file_returns_validation_exit_code(self) -> None:
+        result = _run_cli("probe", "/nonexistent/file.mp4")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "INPUT_NOT_FOUND"
+
+    def test_trim_invalid_range_returns_validation_exit_code(self, test_video: str, output_dir: str) -> None:
+        out = os.path.join(output_dir, "bad_trim.mp4")
+        result = _run_cli("trim", test_video, "--start", "5", "--end", "1", "-o", out)
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "TRIM_START_AFTER_END"
+
+    def test_thumbnail_missing_at_is_structured_validation_error(self, test_video: str, output_dir: str) -> None:
+        out = os.path.join(output_dir, "thumb.jpg")
+        result = _run_cli("thumbnail", test_video, "-o", out)
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "MISSING_FIELD"
+
+    def test_keyframes_supports_limit_and_ndjson(self, test_video: str) -> None:
+        result = _run_cli("keyframes", test_video, "--limit", "5", "--response-format", "ndjson")
+        assert result.returncode == 0
+        lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
+        assert len(lines) <= 5
+        for line in lines:
+            value = json.loads(line)
+            assert isinstance(value, float)
+
+    def test_beats_supports_limit_and_min_strength(self, test_video: str) -> None:
+        result = _run_cli(
+            "beats", test_video,
+            "--limit", "10",
+            "--min-strength", "1.0",
+            "--response-format", "json",
+        )
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert "beats" in data
+        assert data["count"] <= 10
+        assert all(beat["strength"] >= 1.0 for beat in data["beats"])

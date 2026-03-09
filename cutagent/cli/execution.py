@@ -6,7 +6,7 @@ from typing import Callable, Optional
 import typer
 
 from cutagent.cli.utils import json_error, json_out, json_out_shaped
-from cutagent.errors import EXIT_EXECUTION, EXIT_SUCCESS, EXIT_VALIDATION, CutAgentError
+from cutagent.errors import EXIT_SUCCESS, EXIT_VALIDATION, CutAgentError
 from cutagent.input_hardening import reject_control_chars, validate_resource_token
 
 app = typer.Typer(help="EDL Execution and Validation")
@@ -54,7 +54,7 @@ def cmd_validate(
         code = EXIT_SUCCESS if result.valid else EXIT_VALIDATION
         return json_out(result.to_dict(), code)
     except CutAgentError as exc:
-        return json_error(exc, EXIT_VALIDATION)
+        return json_error(exc)
     except FileNotFoundError:
         return json_out({
             "error": True, "code": "INPUT_NOT_FOUND",
@@ -93,7 +93,7 @@ def cmd_execute(
         out["dry_run"] = False
         return json_out_shaped(out, sanitize_mode=sanitize_output)
     except CutAgentError as exc:
-        return json_error(exc, EXIT_EXECUTION)
+        return json_error(exc)
     except FileNotFoundError:
         return json_out({
             "error": True, "code": "INPUT_NOT_FOUND",

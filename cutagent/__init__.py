@@ -56,7 +56,7 @@ from cutagent.probe import (
 from cutagent.text_ops import add_text
 from cutagent.validation import validate_edl
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     # Introspection

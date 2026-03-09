@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-09
+
 ### Added
 
 - `schema` CLI command for runtime schema introspection (`index`, `operation`, `edl`, `command`, `capabilities`)
@@ -14,13 +16,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--dry-run` support on `execute` for validation-only safety rails
 - Optional `--sanitize-output basic` mode for agent-facing output sanitization
 - New agent guidance docs: `AGENTS.md` and `CONTEXT.md`
-- `--fields` response projection and `--response-format ndjson` support on high-volume analysis commands (`probe`, `scenes`, `frames`, `audio-levels`, `summarize`)
+- `--fields` response projection and `--response-format ndjson` support on high-volume analysis commands (`probe`, `scenes`, `frames`, `audio-levels`, `summarize`, `keyframes`, `beats`, `silence`)
 - New tool schema exports in `cutagent.tools`: `cutagent_schema` and `cutagent_op`
+- Output-volume controls for analysis commands:
+  - `keyframes --limit N`
+  - `silence --limit N`
+  - `beats --limit N --min-strength X`
+- Keyframe summary metadata (`total_count`, `truncated`, `average_interval_seconds`) for easier agent planning
 
 ### Changed
 
 - CLI architecture now uses the Typer package implementation as the single runtime surface (removed legacy duplicate `cutagent/cli.py`)
 - Centralized input hardening for common agent failure modes (control chars, malformed tokens, unsafe output paths)
+- CLI now propagates command return codes reliably for structured JSON errors and success paths
+- CLI usage errors (missing options, bad arguments) are converted to structured validation JSON instead of unexpected/system errors
+- `doctor` compares ffmpeg/ffprobe semantic version numbers instead of full banner strings
+
+### Fixed
+
+- EDL validation now rejects unsupported versions (only `"1.0"` is accepted)
+- Validation-style failures now consistently return exit code `1` across CLI surfaces (instead of `0`)
+- `thumbnail` missing `--at`/`--time` now returns a structured `MISSING_FIELD` validation error
 
 ## [0.3.0] - 2026-02-18
 

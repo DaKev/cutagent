@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from cutagent.errors import EXIT_EXECUTION, EXIT_SUCCESS, CutAgentError
+from cutagent.errors import EXIT_EXECUTION, EXIT_SUCCESS, CutAgentError, exit_code_for_error
 from cutagent.input_hardening import (
     apply_field_mask,
     sanitize_data,
@@ -31,9 +31,10 @@ def json_out(data: dict[str, Any], exit_code: int = EXIT_SUCCESS) -> int:
     sys.stdout.flush()
     return exit_code
 
-def json_error(exc: CutAgentError, exit_code: int = EXIT_EXECUTION) -> int:
+def json_error(exc: CutAgentError, exit_code: int | None = None) -> int:
     """Print a CutAgentError as JSON and return the appropriate exit code."""
-    return json_out(exc.to_dict(), exit_code)
+    resolved_code = exit_code if exit_code is not None else exit_code_for_error(exc.code)
+    return json_out(exc.to_dict(), resolved_code)
 
 def read_json_arg(inline: str | None, file_path: str | None, json_attr: str, file_attr: str) -> str:
     """Read JSON from either inline or file argument. Mutually exclusive."""

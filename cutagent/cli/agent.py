@@ -8,7 +8,7 @@ from typing import Any, Optional
 import typer
 
 from cutagent.cli.utils import json_error, json_out_shaped, read_json_arg, validate_output_arg
-from cutagent.errors import EXIT_EXECUTION, EXIT_VALIDATION, CutAgentError
+from cutagent.errors import EXIT_VALIDATION, CutAgentError
 from cutagent.input_hardening import reject_control_chars, safe_json_loads, validate_resource_token
 from cutagent.schema_registry import operation_payload_schema
 
@@ -145,4 +145,4 @@ def cmd_op(
         out["dry_run"] = False
         return json_out_shaped(out, sanitize_mode=sanitize_output)
     except CutAgentError as exc:
-        return json_error(exc, EXIT_EXECUTION)
+        return json_error(exc)

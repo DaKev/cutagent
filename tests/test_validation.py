@@ -98,6 +98,18 @@ class TestValidateEDL:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_EDL" in codes
 
+    def test_invalid_edl_version(self) -> None:
+        edl = {
+            "version": "2.0",
+            "inputs": [],
+            "operations": [],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_EDL" in codes
+
     def test_invalid_time_format(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",

@@ -64,6 +64,62 @@ EXIT_EXECUTION = 2
 EXIT_SYSTEM = 3
 
 
+# Error code classification for CLI exit behavior.
+_VALIDATION_ERROR_CODES = {
+    # Generic validation / argument errors
+    "INVALID_ARGUMENT",
+    INVALID_EDL,
+    UNKNOWN_OPERATION,
+    MISSING_FIELD,
+    INVALID_TIME_FORMAT,
+    INVALID_REFERENCE,
+    # Input/content validation
+    INPUT_NOT_FOUND,
+    INPUT_NOT_READABLE,
+    INPUT_INVALID_FORMAT,
+    TRIM_BEYOND_DURATION,
+    TRIM_START_AFTER_END,
+    SPLIT_POINT_BEYOND_DURATION,
+    REORDER_INDEX_OUT_OF_RANGE,
+    INVALID_STREAM_TYPE,
+    CODEC_INCOMPATIBLE,
+    # Audio validation
+    INVALID_MIX_LEVEL,
+    INVALID_GAIN_VALUE,
+    AUDIO_STREAM_MISSING,
+    INVALID_NORMALIZE_TARGET,
+    # Text/animation validation
+    EMPTY_TEXT_ENTRIES,
+    INVALID_TEXT_POSITION,
+    INVALID_FONT_SIZE,
+    INVALID_TEXT_TIMING,
+    EMPTY_ANIMATION_LAYERS,
+    INVALID_LAYER_TYPE,
+    INVALID_ANIMATION_EASING,
+    INVALID_ANIMATION_PROPERTY,
+    MISSING_LAYER_FIELD,
+    # Misc operation validation
+    "INVALID_TRANSITION",
+    "INVALID_TRANSITION_DURATION",
+    "INVALID_FADE_DURATION",
+    "INVALID_SPEED_FACTOR",
+}
+
+_SYSTEM_ERROR_CODES = {
+    FFMPEG_NOT_FOUND,
+    FFPROBE_NOT_FOUND,
+}
+
+
+def exit_code_for_error(code: str) -> int:
+    """Map a structured CutAgent error code to a process exit code."""
+    if code in _SYSTEM_ERROR_CODES:
+        return EXIT_SYSTEM
+    if code in _VALIDATION_ERROR_CODES:
+        return EXIT_VALIDATION
+    return EXIT_EXECUTION
+
+
 # ---------------------------------------------------------------------------
 # CutAgentError exception
 # ---------------------------------------------------------------------------

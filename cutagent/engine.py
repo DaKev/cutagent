@@ -214,6 +214,14 @@ def parse_edl(raw: str | dict[str, Any]) -> EDL:
                 context={"missing_field": required},
             )
 
+    if data.get("version") != "1.0":
+        raise CutAgentError(
+            code=INVALID_EDL,
+            message=f"Unsupported EDL version: {data.get('version')!r}",
+            recovery=["Use version '1.0' in the EDL header"],
+            context={"supported_version": "1.0", "provided_version": data.get("version")},
+        )
+
     return EDL.from_dict(data)
 
 

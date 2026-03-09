@@ -155,6 +155,8 @@ cutagent probe input.mp4 --fields path,duration,width,height
 
 # Stream heavy list responses as NDJSON
 cutagent scenes input.mp4 --response-format ndjson
+cutagent keyframes input.mp4 --response-format ndjson --limit 100
+cutagent beats input.mp4 --response-format ndjson --limit 100 --min-strength 1.0
 ```
 
 Optional response sanitization for agent-facing reads:
@@ -170,8 +172,11 @@ cutagent probe interview.mp4                     # Media metadata
 cutagent summarize interview.mp4                  # Full content map (scenes + silence + suggested cuts)
 cutagent scenes interview.mp4 --threshold 0.3     # Scene boundaries
 cutagent silence interview.mp4                    # Silence intervals (dead air, pauses)
+cutagent silence interview.mp4 --limit 50         # Limit large silence outputs
 cutagent beats interview.mp4                      # Musical beats (for rhythm-aligned cuts)
+cutagent beats interview.mp4 --min-strength 1.0   # Keep only stronger beats
 cutagent keyframes interview.mp4                  # Keyframe positions
+cutagent keyframes interview.mp4 --limit 100      # Limit large keyframe outputs
 cutagent audio-levels interview.mp4               # Audio levels over time
 ```
 
