@@ -6,6 +6,9 @@ import tempfile
 from pathlib import Path
 
 from cutagent.errors import (
+    INVALID_CROP_REGION,
+    INVALID_RESIZE_DIMENSIONS,
+    INVALID_RESIZE_FIT,
     INVALID_STREAM_TYPE,
     REORDER_INDEX_OUT_OF_RANGE,
     SPLIT_POINT_BEYOND_DURATION,
@@ -490,6 +493,109 @@ def _build_atempo_chain(factor: float) -> str:
         remaining /= 0.5
     parts.append(f"atempo={remaining}")
     return ",".join(parts)
+
+
+def crop(
+    source: str,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    output: str,
+    codec: str = "libx264",
+) -> OperationResult:
+    """Crop a rectangular region from a video."""
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
+    if x < 0 or y < 0 or width <= 0 or height <= 0:
+        raise CutAgentError(
+            code=INVALID_CROP_REGION,
+            message=(
+                f"Invalid crop region x={x}, y={y}, width={width}, height={height} "
+                f"(x/y must be >= 0 and width/height must be > 0)"
+            ),
+            recovery=recovery_hints(INVALID_CROP_REGION),
+            context={"x": x, "y": y, "width": width, "height": height},
+        )
+
+    info = probe_file(source)
+    if info.width is not None and info.height is not None:
+        if x + width > info.width or y + height > info.height:
+            raise CutAgentError(
+                code=INVALID_CROP_REGION,
+                message=(
+                    f"Crop region ({x},{y},{width},{height}) exceeds source frame "
+                    f"{info.width}x{info.height}"
+                ),
+                recovery=recovery_hints(INVALID_CROP_REGION),
+                context={
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                    "source_width": info.width,
+                    "source_height": info.height,
+                },
+            )
+
+    args = [
+        "-i", source,
+        "-vf", f"crop={width}:{height}:{x}:{y}",
+        "-c:v", codec,
+        "-c:a", "aac",
+        output,
+    ]
+    run_ffmpeg(args)
+    return OperationResult(success=True, output_path=output, duration_seconds=info.duration)
+
+
+def resize(
+    source: str,
+    width: int,
+    height: int,
+    output: str,
+    fit: str = "contain",
+    background_color: str = "black",
+    codec: str = "libx264",
+) -> OperationResult:
+    """Resize a video to the target canvas."""
+    validate_resource_token(source, "source")
+    output = validate_safe_output_path(output, field_name="output")
+
+    if width <= 0 or height <= 0:
+        raise CutAgentError(
+            code=INVALID_RESIZE_DIMENSIONS,
+            message=f"Invalid resize dimensions width={width}, height={height}",
+            recovery=recovery_hints(INVALID_RESIZE_DIMENSIONS),
+            context={"width": width, "height": height},
+        )
+    if fit not in {"contain", "stretch"}:
+        raise CutAgentError(
+            code=INVALID_RESIZE_FIT,
+            message=f"Invalid resize fit: {fit!r}",
+            recovery=recovery_hints(INVALID_RESIZE_FIT),
+            context={"fit": fit},
+        )
+
+    info = probe_file(source)
+    if fit == "stretch":
+        video_filter = f"scale={width}:{height}"
+    else:
+        video_filter = (
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:{background_color}"
+        )
+
+    args = [
+        "-i", source,
+        "-vf", video_filter,
+        "-c:v", codec,
+        "-c:a", "aac",
+        output,
+    ]
+    run_ffmpeg(args)
+    return OperationResult(success=True, output_path=output, duration_seconds=info.duration)
 
 
 def fade(

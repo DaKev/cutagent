@@ -6,12 +6,14 @@ from cutagent.models import (
     EDL,
     AudioLevel,
     ConcatOp,
+    CropOp,
     ExtractOp,
     FadeOp,
     FrameResult,
     OperationResult,
     ProbeResult,
     ReorderOp,
+    ResizeOp,
     SceneInfo,
     SilenceInterval,
     SpeedOp,
@@ -160,6 +162,28 @@ class TestOperations:
         assert d["op"] == "speed"
         op2 = SpeedOp.from_dict(d)
         assert op2.factor == 2.0
+
+    def test_crop_round_trip(self) -> None:
+        op = CropOp(source="test.mp4", x=10, y=20, width=320, height=240)
+        d = op.to_dict()
+        assert d["op"] == "crop"
+        op2 = CropOp.from_dict(d)
+        assert op2.width == 320
+        assert op2.height == 240
+
+    def test_resize_round_trip(self) -> None:
+        op = ResizeOp(
+            source="test.mp4",
+            width=1080,
+            height=1920,
+            fit="contain",
+            background_color="black",
+        )
+        d = op.to_dict()
+        assert d["op"] == "resize"
+        op2 = ResizeOp.from_dict(d)
+        assert op2.fit == "contain"
+        assert op2.background_color == "black"
 
     def test_parse_fade_operation(self) -> None:
         d = {"op": "fade", "source": "test.mp4", "fade_in": 0.25, "fade_out": 0.25}

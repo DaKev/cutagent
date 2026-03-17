@@ -16,7 +16,7 @@ CutAgent is designed from the ground up for **AI agents** and **programmatic vid
 - **Declarative EDL**: Describe your edit as a JSON document, execute it in one call
 - **Zero runtime dependencies**: Pure Python + FFmpeg — or `pip install 'cutagent[ffmpeg]'` to bundle everything
 - **Content intelligence**: Scene detection, silence detection, audio levels, keyframe analysis, beat detection
-- **Professional editing**: Trim, split, concat, reorder, extract, fade with crossfade transitions, speed control
+- **Professional editing**: Trim, split, concat, reorder, extract, crop, resize, fade with crossfade transitions, speed control
 - **Audio polish**: Mix background music, adjust volume, replace audio, normalize loudness (EBU R128)
 - **Text & motion graphics**: Burn-in titles, lower-thirds, annotations, and keyframe-driven animations
 - **Structured errors**: Error codes, recovery hints, and context in every failure response
@@ -88,7 +88,7 @@ This checks for ffmpeg/ffprobe, reports versions, and flags any issues.
 ### Python API
 
 ```python
-from cutagent import probe, trim, execute_edl
+from cutagent import crop, execute_edl, probe, trim
 
 # Inspect a video
 info = probe("interview.mp4")
@@ -96,6 +96,9 @@ print(info.duration, info.width, info.height)
 
 # Trim a segment
 result = trim("interview.mp4", start="00:02:15", end="00:05:40", output="clip.mp4")
+
+# Crop to a vertical center cut
+result = crop("interview.mp4", x=420, y=0, width=1080, height=1920, output="vertical.mp4")
 
 # Execute a full edit decision list
 edl = {
@@ -145,6 +148,15 @@ cutagent op trim --json '{
   "end": "00:00:05",
   "output": {"path": "clip.mp4", "codec": "copy"}
 }'
+
+# 4) Transform operations use the same payload-first flow
+cutagent op resize --dry-run --json '{
+  "source": "input.mp4",
+  "width": 1080,
+  "height": 1920,
+  "fit": "contain",
+  "output": {"path": "social.mp4", "codec": "libx264"}
+}'
 ```
 
 For large analysis responses, shape output to protect agent context:
@@ -187,6 +199,8 @@ cutagent trim interview.mp4 --start 00:02:15 --end 00:05:40 -o clip.mp4
 cutagent split interview.mp4 --at 00:05:00,00:10:00 --prefix segment
 cutagent concat clip1.mp4 clip2.mp4 -o merged.mp4
 cutagent speed interview.mp4 --factor 2.0 -o fast.mp4
+cutagent crop interview.mp4 --x 160 --y 0 --width 320 --height 480 -o portrait_crop.mp4
+cutagent resize interview.mp4 --width 1080 --height 1920 --fit contain -o social.mp4
 cutagent extract interview.mp4 --stream audio -o audio.aac
 ```
 
@@ -230,16 +244,18 @@ The Edit Decision List is a declarative JSON format for multi-step edits. Operat
   "operations": [
     {"op": "trim", "source": "$input.0", "start": "00:01:00", "end": "00:03:00"},
     {"op": "trim", "source": "$input.1", "start": "00:00:10", "end": "00:00:20"},
-    {"op": "normalize", "source": "$0"},
+    {"op": "crop", "source": "$0", "x": 160, "y": 0, "width": 320, "height": 480},
+    {"op": "resize", "source": "$2", "width": 1080, "height": 1920, "fit": "contain"},
+    {"op": "normalize", "source": "$3"},
     {"op": "fade", "source": "$1", "fade_in": 0.5, "fade_out": 0.5},
-    {"op": "concat", "segments": ["$2", "$3"], "transition": "crossfade", "transition_duration": 0.5},
-    {"op": "mix_audio", "source": "$4", "audio": "$input.2", "mix_level": 0.15}
+    {"op": "concat", "segments": ["$4", "$5"], "transition": "crossfade", "transition_duration": 0.5},
+    {"op": "mix_audio", "source": "$6", "audio": "$input.2", "mix_level": 0.15}
   ],
   "output": {"path": "final.mp4", "codec": "libx264"}
 }
 ```
 
-**Available operations:** `trim`, `split`, `concat`, `reorder`, `extract`, `fade`, `speed`, `mix_audio`, `volume`, `replace_audio`, `normalize`, `text`, `animate`
+**Available operations:** `trim`, `split`, `concat`, `reorder`, `extract`, `fade`, `speed`, `crop`, `resize`, `mix_audio`, `volume`, `replace_audio`, `normalize`, `text`, `animate`
 
 ## For Agent/MCP Authors
 

@@ -22,12 +22,14 @@ from cutagent.models import (
     TEXT_POSITIONS,
     AnimateOp,
     ConcatOp,
+    CropOp,
     ExtractOp,
     FadeOp,
     MixAudioOp,
     NormalizeOp,
     ReorderOp,
     ReplaceAudioOp,
+    ResizeOp,
     SpeedOp,
     SplitOp,
     TextOp,
@@ -289,6 +291,10 @@ def _validate_operation(
         return _validate_fade(op, idx, produced, file_durations, result, input_count, _op_dur, _inputs, _named)
     elif isinstance(op, SpeedOp):
         return _validate_speed(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+    elif isinstance(op, CropOp):
+        return _validate_crop(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named, _res)
+    elif isinstance(op, ResizeOp):
+        return _validate_resize(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
     elif isinstance(op, MixAudioOp):
         return _validate_mix_audio(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
     elif isinstance(op, VolumeOp):
@@ -595,6 +601,69 @@ def _validate_speed(
     if source_dur is not None and op.factor > 0:
         return source_dur / op.factor
     return None
+
+
+def _validate_crop(
+    op: CropOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+    named_ops: dict[str, int] | None = None,
+    file_resolutions: dict[str, tuple[int | None, int | None]] | None = None,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count, named_ops)
+    if op.x < 0 or op.y < 0 or op.width <= 0 or op.height <= 0:
+        result.add_error(
+            "INVALID_CROP_REGION",
+            (
+                f"Op {idx}: x/y must be >= 0 and width/height must be > 0 "
+                f"(got x={op.x}, y={op.y}, width={op.width}, height={op.height})"
+            ),
+        )
+
+    _inputs = inputs or []
+    resolved = _resolve_seg_to_input(op.source, _inputs)
+    _res = file_resolutions or {}
+    if resolved and resolved in _res:
+        src_width, src_height = _res[resolved]
+        if src_width is not None and src_height is not None:
+            if op.x + op.width > src_width or op.y + op.height > src_height:
+                result.add_error(
+                    "INVALID_CROP_REGION",
+                    (
+                        f"Op {idx}: crop region ({op.x},{op.y},{op.width},{op.height}) exceeds "
+                        f"source frame {src_width}x{src_height}"
+                    ),
+                )
+
+    return _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, _inputs,
+    )
+
+
+def _validate_resize(
+    op: ResizeOp, idx: int, produced: set[int], result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    file_durations: dict[str, float] | None = None,
+    inputs: list[str] | None = None,
+    named_ops: dict[str, int] | None = None,
+) -> Optional[float]:
+    _validate_source(op.source, produced, result, input_count, named_ops)
+    if op.width <= 0 or op.height <= 0:
+        result.add_error(
+            "INVALID_RESIZE_DIMENSIONS",
+            f"Op {idx}: width/height must be > 0, got width={op.width}, height={op.height}",
+        )
+    if op.fit not in {"contain", "stretch"}:
+        result.add_error(
+            "INVALID_RESIZE_FIT",
+            f"Op {idx}: fit must be 'contain' or 'stretch', got {op.fit!r}",
+        )
+    return _resolve_source_duration(
+        op.source, file_durations or {}, op_durations or {}, inputs or [],
+    )
 
 
 def _validate_mix_audio(

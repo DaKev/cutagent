@@ -415,6 +415,22 @@ class TestAgentFirstCli:
         assert "schema" in data
         assert "output" in data["schema"]["properties"]
 
+    def test_schema_operation_crop(self) -> None:
+        result = _run_cli("schema", "operation", "crop")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["name"] == "crop"
+        assert "x" in data["schema"]["properties"]
+        assert "height" in data["schema"]["properties"]
+
+    def test_schema_operation_resize(self) -> None:
+        result = _run_cli("schema", "operation", "resize")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["name"] == "resize"
+        assert "fit" in data["schema"]["properties"]
+        assert "background_color" in data["schema"]["properties"]
+
     def test_op_trim_dry_run(self, test_video: str, output_dir: str) -> None:
         payload = json.dumps({
             "source": test_video,
@@ -426,6 +442,33 @@ class TestAgentFirstCli:
         assert result.returncode == 0
         data = json.loads(result.stdout)
         assert data["dry_run"] is True
+        assert data["validation"]["valid"] is True
+
+    def test_op_crop_dry_run(self, test_video: str, output_dir: str) -> None:
+        payload = json.dumps({
+            "source": test_video,
+            "x": 100,
+            "y": 50,
+            "width": 320,
+            "height": 240,
+            "output": {"path": os.path.join(output_dir, "crop.mp4"), "codec": "libx264"},
+        })
+        result = _run_cli("op", "crop", "--json", payload, "--dry-run")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["validation"]["valid"] is True
+
+    def test_op_resize_dry_run(self, test_video: str, output_dir: str) -> None:
+        payload = json.dumps({
+            "source": test_video,
+            "width": 1080,
+            "height": 1920,
+            "fit": "contain",
+            "output": {"path": os.path.join(output_dir, "resize.mp4"), "codec": "libx264"},
+        })
+        result = _run_cli("op", "resize", "--json", payload, "--dry-run")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
         assert data["validation"]["valid"] is True
 
     def test_op_rejects_unknown_fields(self, test_video: str, output_dir: str) -> None:
@@ -500,6 +543,38 @@ class TestCliRegressions:
         data = json.loads(result.stdout)
         assert data["error"] is True
         assert data["code"] == "TRIM_START_AFTER_END"
+
+    def test_crop_returns_structured_json(self, test_video: str, output_dir: str) -> None:
+        out = os.path.join(output_dir, "crop.mp4")
+        result = _run_cli("crop", test_video, "--x", "100", "--y", "50", "--width", "320", "--height", "240", "-o", out)
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["success"] is True
+        assert os.path.exists(out)
+
+    def test_resize_returns_structured_json(self, test_video: str, output_dir: str) -> None:
+        out = os.path.join(output_dir, "resize.mp4")
+        result = _run_cli("resize", test_video, "--width", "1080", "--height", "1920", "-o", out)
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["success"] is True
+        assert os.path.exists(out)
+
+    def test_crop_invalid_region_returns_validation_exit_code(self, test_video: str, output_dir: str) -> None:
+        out = os.path.join(output_dir, "bad_crop.mp4")
+        result = _run_cli("crop", test_video, "--x", "-1", "--y", "0", "--width", "320", "--height", "240", "-o", out)
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "INVALID_CROP_REGION"
+
+    def test_resize_invalid_fit_returns_validation_exit_code(self, test_video: str, output_dir: str) -> None:
+        out = os.path.join(output_dir, "bad_resize.mp4")
+        result = _run_cli("resize", test_video, "--width", "1080", "--height", "1920", "--fit", "cover", "-o", out)
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "INVALID_RESIZE_FIT"
 
     def test_thumbnail_missing_at_is_structured_validation_error(self, test_video: str, output_dir: str) -> None:
         out = os.path.join(output_dir, "thumb.jpg")

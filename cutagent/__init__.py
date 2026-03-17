@@ -5,7 +5,7 @@ Public API:
     extract_frames, thumbnail, detect_silence, audio_levels — content probes
     detect_beats                                            — music beat detection
     summarize                                                — unified content map
-    trim, split, concat, reorder, extract_stream, fade, speed — video operations
+    trim, split, concat, reorder, extract_stream, fade, speed, crop, resize — video operations
     mix_audio, adjust_volume, replace_audio, normalize_audio  — audio operations
     add_text                                                 — text overlay operations
     animate                                                  — keyframe-driven animations
@@ -26,12 +26,14 @@ from cutagent.models import (
     AnimationProperty,
     AudioLevel,
     BeatInfo,
+    CropOp,
     FrameResult,
     MixAudioOp,
     NormalizeOp,
     OperationResult,
     ProbeResult,
     ReplaceAudioOp,
+    ResizeOp,
     SceneInfo,
     SilenceInterval,
     SpeedOp,
@@ -40,7 +42,17 @@ from cutagent.models import (
     VideoSummary,
     VolumeOp,
 )
-from cutagent.operations import concat, extract_stream, fade, reorder, speed, split, trim
+from cutagent.operations import (
+    concat,
+    crop,
+    extract_stream,
+    fade,
+    reorder,
+    resize,
+    speed,
+    split,
+    trim,
+)
 from cutagent.probe import (
     audio_levels,
     detect_beats,
@@ -56,7 +68,7 @@ from cutagent.probe import (
 from cutagent.text_ops import add_text
 from cutagent.validation import validate_edl
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     # Introspection
@@ -78,6 +90,8 @@ __all__ = [
     "extract_stream",
     "fade",
     "speed",
+    "crop",
+    "resize",
     # Audio operations
     "mix_audio",
     "adjust_volume",
@@ -100,6 +114,8 @@ __all__ = [
     "AudioLevel",
     "BeatInfo",
     "VideoSummary",
+    "CropOp",
+    "ResizeOp",
     "SpeedOp",
     "MixAudioOp",
     "VolumeOp",
