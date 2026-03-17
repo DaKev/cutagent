@@ -100,6 +100,32 @@ _OPERATION_CORE_SCHEMAS: dict[str, dict[str, Any]] = {
         "required": ["source", "factor"],
         "additionalProperties": False,
     },
+    "crop": {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "x": {"type": "integer", "minimum": 0},
+            "y": {"type": "integer", "minimum": 0},
+            "width": {"type": "integer", "exclusiveMinimum": 0},
+            "height": {"type": "integer", "exclusiveMinimum": 0},
+            "id": {"type": "string"},
+        },
+        "required": ["source", "x", "y", "width", "height"],
+        "additionalProperties": False,
+    },
+    "resize": {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "width": {"type": "integer", "exclusiveMinimum": 0},
+            "height": {"type": "integer", "exclusiveMinimum": 0},
+            "fit": {"type": "string", "enum": ["contain", "stretch"], "default": "contain"},
+            "background_color": {"type": "string", "default": "black"},
+            "id": {"type": "string"},
+        },
+        "required": ["source", "width", "height"],
+        "additionalProperties": False,
+    },
     "mix_audio": {
         "type": "object",
         "properties": {

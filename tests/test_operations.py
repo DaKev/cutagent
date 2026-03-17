@@ -6,7 +6,18 @@ from typing import Any
 import pytest
 
 from cutagent.errors import CutAgentError
-from cutagent.operations import concat, extract_stream, fade, reorder, speed, split, trim
+from cutagent.operations import (
+    concat,
+    crop,
+    extract_stream,
+    fade,
+    reorder,
+    resize,
+    speed,
+    split,
+    trim,
+)
+from cutagent.probe import probe
 
 
 class TestTrim:
@@ -170,3 +181,44 @@ class TestSpeed:
         out = os.path.join(output_dir, "bad_speed.mp4")
         with pytest.raises(ValueError):
             speed(test_video, out, factor=0.1)
+
+
+class TestCrop:
+    def test_crop_valid_region(self, test_video: Any, output_dir: Any) -> None:
+        out = os.path.join(output_dir, "cropped.mp4")
+        result = crop(test_video, x=100, y=50, width=320, height=240, output=out)
+        assert result.success
+        assert os.path.exists(out)
+        assert result.duration_seconds == pytest.approx(5.0, abs=0.2)
+
+        info = probe(out)
+        assert info.width == 320
+        assert info.height == 240
+
+    def test_crop_out_of_bounds(self, test_video: Any, output_dir: Any) -> None:
+        out = os.path.join(output_dir, "bad_crop.mp4")
+        with pytest.raises(CutAgentError) as exc_info:
+            crop(test_video, x=500, y=0, width=320, height=240, output=out)
+        assert exc_info.value.code == "INVALID_CROP_REGION"
+
+
+class TestResize:
+    def test_resize_contain(self, test_video: Any, output_dir: Any) -> None:
+        out = os.path.join(output_dir, "resized_contain.mp4")
+        result = resize(test_video, width=1080, height=1920, output=out, fit="contain")
+        assert result.success
+        assert os.path.exists(out)
+
+        info = probe(out)
+        assert info.width == 1080
+        assert info.height == 1920
+
+    def test_resize_stretch(self, test_video: Any, output_dir: Any) -> None:
+        out = os.path.join(output_dir, "resized_stretch.mp4")
+        result = resize(test_video, width=320, height=320, output=out, fit="stretch")
+        assert result.success
+        assert os.path.exists(out)
+
+        info = probe(out)
+        assert info.width == 320
+        assert info.height == 320

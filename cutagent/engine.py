@@ -21,6 +21,7 @@ from cutagent.models import (
     EDL,
     AnimateOp,
     ConcatOp,
+    CropOp,
     ExtractOp,
     FadeOp,
     MixAudioOp,
@@ -28,13 +29,14 @@ from cutagent.models import (
     OperationResult,
     ReorderOp,
     ReplaceAudioOp,
+    ResizeOp,
     SpeedOp,
     SplitOp,
     TextOp,
     TrimOp,
     VolumeOp,
 )
-from cutagent.operations import concat, extract_stream, fade, reorder, speed, split, trim
+from cutagent.operations import concat, crop, extract_stream, fade, reorder, resize, speed, split, trim
 from cutagent.text_ops import add_text
 from cutagent.input_hardening import (
     reject_control_chars,
@@ -389,6 +391,34 @@ def _execute_operation(
             codec=codec if codec != "copy" else "libx264",
         )
 
+    if isinstance(op, CropOp):
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
+        ext = Path(source).suffix or ext
+        out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
+        return crop(
+            source,
+            x=op.x,
+            y=op.y,
+            width=op.width,
+            height=op.height,
+            output=out,
+            codec=codec if codec != "copy" else "libx264",
+        )
+
+    if isinstance(op, ResizeOp):
+        source = _resolve_source(op.source, results, inputs, nr, split_segments)
+        ext = Path(source).suffix or ext
+        out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
+        return resize(
+            source,
+            width=op.width,
+            height=op.height,
+            output=out,
+            fit=op.fit,
+            background_color=op.background_color,
+            codec=codec if codec != "copy" else "libx264",
+        )
+
     if isinstance(op, MixAudioOp):
         source = _resolve_source(op.source, results, inputs, nr, split_segments)
         audio = _resolve_source(op.audio, results, inputs, nr, split_segments)
@@ -453,5 +483,5 @@ def _execute_operation(
     raise CutAgentError(
         code=INVALID_EDL,
         message=f"Unsupported operation at index {idx}: {type(op).__name__}",
-        recovery=["Use one of: trim, split, concat, reorder, extract, fade, speed, mix_audio, volume, replace_audio, normalize, text, animate"],
+        recovery=["Use one of: trim, split, concat, reorder, extract, fade, speed, crop, resize, mix_audio, volume, replace_audio, normalize, text, animate"],
     )

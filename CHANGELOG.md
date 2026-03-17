@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-17
+
+### Added
+
+- New transform operations: `crop` and `resize`
+- New direct CLI commands:
+  - `cutagent crop FILE --x ... --y ... --width ... --height ... -o OUT`
+  - `cutagent resize FILE --width ... --height ... [--fit contain|stretch] -o OUT`
+- Full EDL, payload-first `op`, schema, capabilities, and README support for `crop` and `resize`
+
+### Changed
+
+- Transform operations now share the existing re-encode behavior used by other video filter ops: direct CLI defaults to `libx264`, and EDL execution coerces `codec=copy` to `libx264` when required
+
+### Fixed
+
+- Added validation coverage for invalid crop regions and invalid resize dimensions/fit values
+
 ## [0.4.0] - 2026-03-09
 
 ### Added

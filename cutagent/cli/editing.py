@@ -61,7 +61,10 @@ def cmd_concat(
     files: list[str] = typer.Argument(..., help="Video files to concatenate"),
     output: str = typer.Option(..., "-o", "--output", help="Output file path"),
     codec: str = typer.Option("copy", help="Codec: 'copy' (default) or codec name"),
-    transition: Optional[str] = typer.Option(None, help="Optional transition type (e.g. crossfade)"),
+    transition: Optional[str] = typer.Option(
+        None,
+        help="Optional transition type (e.g. crossfade)",
+    ),
     transition_duration: float = typer.Option(0.5, help="Transition duration in seconds"),
 ) -> int:
     """Concatenate video files."""
@@ -134,3 +137,61 @@ def cmd_speed(
             "message": str(exc),
             "recovery": ["Use --factor between 0.25 and 100.0"],
         }, EXIT_VALIDATION)
+
+
+@app.command("crop")
+def cmd_crop(
+    file: str,
+    x: int = typer.Option(..., help="Crop origin X coordinate"),
+    y: int = typer.Option(..., help="Crop origin Y coordinate"),
+    width: int = typer.Option(..., help="Crop width in pixels"),
+    height: int = typer.Option(..., help="Crop height in pixels"),
+    output: str = typer.Option(..., "-o", "--output", help="Output file path"),
+    codec: str = typer.Option("libx264", help="Video codec (default: libx264)"),
+) -> int:
+    """Crop a rectangular region from a video."""
+    from cutagent.operations import crop
+    try:
+        result = crop(
+            file,
+            x=x,
+            y=y,
+            width=width,
+            height=height,
+            output=output,
+            codec=codec,
+        )
+        return json_out(result.to_dict())
+    except CutAgentError as exc:
+        return json_error(exc)
+
+
+@app.command("resize")
+def cmd_resize(
+    file: str,
+    width: int = typer.Option(..., help="Target output width in pixels"),
+    height: int = typer.Option(..., help="Target output height in pixels"),
+    output: str = typer.Option(..., "-o", "--output", help="Output file path"),
+    fit: str = typer.Option("contain", help="Resize strategy: contain or stretch"),
+    background_color: str = typer.Option(
+        "black",
+        "--background-color",
+        help="Pad color when --fit contain",
+    ),
+    codec: str = typer.Option("libx264", help="Video codec (default: libx264)"),
+) -> int:
+    """Resize a video into a target canvas."""
+    from cutagent.operations import resize
+    try:
+        result = resize(
+            file,
+            width=width,
+            height=height,
+            output=output,
+            fit=fit,
+            background_color=background_color,
+            codec=codec,
+        )
+        return json_out(result.to_dict())
+    except CutAgentError as exc:
+        return json_error(exc)

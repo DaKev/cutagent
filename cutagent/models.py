@@ -422,6 +422,64 @@ class SpeedOp:
 
 
 @dataclass
+class CropOp:
+    """Crop a rectangular region from a video."""
+    source: str
+    x: int
+    y: int
+    width: int
+    height: int
+    id: Optional[str] = None
+    op: str = "crop"
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CropOp:
+        return cls(
+            source=data["source"],
+            x=int(data["x"]),
+            y=int(data["y"]),
+            width=int(data["width"]),
+            height=int(data["height"]),
+            id=data.get("id"),
+        )
+
+
+@dataclass
+class ResizeOp:
+    """Resize a video into a target canvas."""
+    source: str
+    width: int
+    height: int
+    id: Optional[str] = None
+    fit: str = "contain"
+    background_color: str = "black"
+    op: str = "resize"
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        if d["id"] is None:
+            del d["id"]
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ResizeOp:
+        return cls(
+            source=data["source"],
+            width=int(data["width"]),
+            height=int(data["height"]),
+            id=data.get("id"),
+            fit=str(data.get("fit", "contain")),
+            background_color=str(data.get("background_color", "black")),
+        )
+
+
+@dataclass
 class MixAudioOp:
     """Mix an external audio track into a video's existing audio."""
     source: str
@@ -732,6 +790,8 @@ OPERATION_TYPES: dict[str, Any] = {
     "extract": ExtractOp,
     "fade": FadeOp,
     "speed": SpeedOp,
+    "crop": CropOp,
+    "resize": ResizeOp,
     "mix_audio": MixAudioOp,
     "volume": VolumeOp,
     "replace_audio": ReplaceAudioOp,

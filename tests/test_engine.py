@@ -174,6 +174,63 @@ class TestExecuteEDL:
         assert result.success
         assert os.path.exists(out)
 
+    def test_crop_operation(self, test_video: Any, output_dir: Any) -> None:
+        out = os.path.join(output_dir, "cropped.mp4")
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {
+                    "op": "crop",
+                    "source": "$input.0",
+                    "x": 100,
+                    "y": 50,
+                    "width": 320,
+                    "height": 240,
+                },
+            ],
+            "output": {"path": out, "codec": "copy"},
+        }
+        result = execute_edl(edl)
+        assert result.success
+        assert os.path.exists(out)
+
+    def test_resize_operation(self, test_video: Any, output_dir: Any) -> None:
+        out = os.path.join(output_dir, "resized.mp4")
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {
+                    "op": "resize",
+                    "source": "$input.0",
+                    "width": 1080,
+                    "height": 1920,
+                    "fit": "contain",
+                },
+            ],
+            "output": {"path": out, "codec": "copy"},
+        }
+        result = execute_edl(edl)
+        assert result.success
+        assert os.path.exists(out)
+
+    def test_trim_crop_resize_chain_named_ref(self, test_video: Any, output_dir: Any) -> None:
+        out = os.path.join(output_dir, "chain.mp4")
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "id": "clip", "source": "$input.0", "start": "0", "end": "3"},
+                {"op": "crop", "source": "$clip", "x": 100, "y": 50, "width": 320, "height": 240},
+                {"op": "resize", "source": "$1", "width": 1080, "height": 1920, "fit": "contain"},
+            ],
+            "output": {"path": out, "codec": "copy"},
+        }
+        result = execute_edl(edl)
+        assert result.success
+        assert os.path.exists(out)
+
     def test_input_ref_trim(self, test_video: Any, output_dir: Any) -> None:
         """Test $input.0 reference in a trim operation."""
         out = os.path.join(output_dir, "input_ref.mp4")

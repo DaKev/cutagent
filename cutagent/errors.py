@@ -33,6 +33,9 @@ SPLIT_POINT_BEYOND_DURATION = "SPLIT_POINT_BEYOND_DURATION"
 REORDER_INDEX_OUT_OF_RANGE = "REORDER_INDEX_OUT_OF_RANGE"
 INVALID_STREAM_TYPE = "INVALID_STREAM_TYPE"
 CODEC_INCOMPATIBLE = "CODEC_INCOMPATIBLE"
+INVALID_CROP_REGION = "INVALID_CROP_REGION"
+INVALID_RESIZE_DIMENSIONS = "INVALID_RESIZE_DIMENSIONS"
+INVALID_RESIZE_FIT = "INVALID_RESIZE_FIT"
 
 # Audio operations
 INVALID_MIX_LEVEL = "INVALID_MIX_LEVEL"
@@ -83,6 +86,9 @@ _VALIDATION_ERROR_CODES = {
     REORDER_INDEX_OUT_OF_RANGE,
     INVALID_STREAM_TYPE,
     CODEC_INCOMPATIBLE,
+    INVALID_CROP_REGION,
+    INVALID_RESIZE_DIMENSIONS,
+    INVALID_RESIZE_FIT,
     # Audio validation
     INVALID_MIX_LEVEL,
     INVALID_GAIN_VALUE,
@@ -181,6 +187,17 @@ _RECOVERY_MAP: dict[str, list[str]] = {
     INVALID_REFERENCE: [
         "References use $N where N is a 0-based operation index",
         "Ensure the referenced operation exists earlier in the operations list",
+    ],
+    INVALID_CROP_REGION: [
+        "Use non-negative x/y coordinates and positive width/height",
+        "Ensure the crop rectangle stays within the source frame bounds",
+    ],
+    INVALID_RESIZE_DIMENSIONS: [
+        "Use positive integer width/height values",
+    ],
+    INVALID_RESIZE_FIT: [
+        "Use fit='contain' to preserve aspect ratio with padding",
+        "Use fit='stretch' to force an exact resize without aspect-ratio preservation",
     ],
     INVALID_TIME_FORMAT: [
         "Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds",

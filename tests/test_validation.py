@@ -226,6 +226,83 @@ class TestValidateEDL:
         result = validate_edl(edl)
         assert result.valid
 
+    def test_invalid_crop_bounds(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "crop", "source": "$input.0", "x": -1, "y": 0, "width": 320, "height": 240},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_CROP_REGION" in codes
+
+    def test_crop_out_of_frame(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "crop", "source": "$input.0", "x": 500, "y": 0, "width": 320, "height": 240},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_CROP_REGION" in codes
+
+    def test_invalid_resize_dimensions(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "resize", "source": "$input.0", "width": 0, "height": 1920},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_RESIZE_DIMENSIONS" in codes
+
+    def test_invalid_resize_fit(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {
+                    "op": "resize",
+                    "source": "$input.0",
+                    "width": 1080,
+                    "height": 1920,
+                    "fit": "cover",
+                },
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_RESIZE_FIT" in codes
+
+    def test_crop_and_resize_preserve_estimated_duration(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "crop", "source": "$input.0", "x": 0, "y": 0, "width": 320, "height": 240},
+                {"op": "resize", "source": "$0", "width": 1080, "height": 1920, "fit": "contain"},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+        assert result.estimated_duration is not None
+        assert result.estimated_duration == pytest.approx(5.0, abs=0.2)
+
     def test_invalid_fade_duration(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
