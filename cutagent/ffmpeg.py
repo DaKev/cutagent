@@ -21,6 +21,19 @@ from cutagent.errors import (
 DEFAULT_TIMEOUT = 300  # 5 minutes
 
 
+def run_process(command: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    """Run a captured subprocess for media-tool discovery and execution.
+
+    Args:
+        command: Complete executable and argument vector.
+        timeout: Maximum runtime in seconds.
+
+    Returns:
+        Completed subprocess result without enforcing its exit status.
+    """
+    return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+
+
 def _ffmpeg_recovery_hints(stderr: str) -> list[str]:
     """Generate context-aware recovery hints from ffmpeg stderr."""
     if "No such filter" in stderr:
@@ -33,7 +46,7 @@ def _ffmpeg_recovery_hints(stderr: str) -> list[str]:
     if "codec not found" in stderr_lower or "unknown encoder" in stderr_lower:
         return [
             "The required codec is not available in your ffmpeg build",
-            "Set CUTAGENT_FFMPEG to a ffmpeg binary with the needed codec, or run 'cutagent doctor'",
+            "Set CUTAGENT_FFMPEG to a compatible ffmpeg, or run 'cutagent doctor'",
         ]
     if "no such file" in stderr_lower or "does not exist" in stderr_lower:
         return [
@@ -46,6 +59,7 @@ def _ffmpeg_recovery_hints(stderr: str) -> list[str]:
             "Check file permissions for input and output paths",
         ]
     return ["Check stderr for details", "Verify input file is a valid media file"]
+
 
 # Module-level cache — discovery runs once per process
 _cached_ffmpeg: str | None = None
@@ -62,6 +76,7 @@ def reset_cache() -> None:
 # ---------------------------------------------------------------------------
 # Binary detection helpers
 # ---------------------------------------------------------------------------
+
 
 def _try_env_exact(env_var: str) -> str | None:
     """Check an env var pointing to an exact binary path."""
@@ -90,6 +105,7 @@ def _try_static_ffmpeg() -> tuple[str | None, str | None]:
     """Try to get paths from the static-ffmpeg package (bundles both)."""
     try:
         from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise
+
         ffmpeg_path, ffprobe_path = get_or_fetch_platform_executables_else_raise()
         return (ffmpeg_path, ffprobe_path)
     except Exception:
@@ -100,6 +116,7 @@ def _try_imageio_ffmpeg() -> str | None:
     """Try to get ffmpeg path from imageio-ffmpeg (ffmpeg only, no ffprobe)."""
     try:
         import imageio_ffmpeg
+
         return str(imageio_ffmpeg.get_ffmpeg_exe())
     except Exception:
         return None
@@ -164,6 +181,7 @@ def _discover_ffprobe() -> str:
 # Public binary finders (cached)
 # ---------------------------------------------------------------------------
 
+
 def find_ffmpeg() -> str:
     """Return the path to the ffmpeg binary, or raise CutAgentError."""
     global _cached_ffmpeg
@@ -202,6 +220,7 @@ def find_ffprobe() -> str:
 # Subprocess runners
 # ---------------------------------------------------------------------------
 
+
 def run_ffmpeg(
     args: list[str],
     timeout: int = DEFAULT_TIMEOUT,
@@ -221,12 +240,7 @@ def run_ffmpeg(
     cmd = [ffmpeg, "-hide_banner", "-y"] + args
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        result = run_process(cmd, timeout)
     except subprocess.TimeoutExpired as exc:
         raise CutAgentError(
             code=FFMPEG_TIMEOUT,
@@ -268,12 +282,7 @@ def run_ffprobe(
     cmd = [ffprobe, "-hide_banner"] + args
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        result = run_process(cmd, timeout)
     except subprocess.TimeoutExpired as exc:
         raise CutAgentError(
             code=FFMPEG_TIMEOUT,
@@ -299,11 +308,15 @@ def run_ffprobe(
 
 def run_ffprobe_json(path: str | Path) -> dict[str, typing.Any]:
     """Run ffprobe and return parsed JSON output for a media file."""
-    result = run_ffprobe([
-        "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        "-show_streams",
-        str(path),
-    ])
+    result = run_ffprobe(
+        [
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            str(path),
+        ]
+    )
     return typing.cast(dict[str, typing.Any], json.loads(result.stdout))

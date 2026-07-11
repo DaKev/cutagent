@@ -1,8 +1,7 @@
-from typing import Any
-
 """Tests for cutagent.ffmpeg — binary discovery chain."""
 
 import os
+from typing import Any
 
 from cutagent.ffmpeg import (
     _try_env_dir,

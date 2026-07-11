@@ -53,6 +53,7 @@ def ease_value(easing: str, u: float) -> float:
 # FFmpeg expression builders
 # ---------------------------------------------------------------------------
 
+
 def _ffmpeg_clamp(expr: str, lo: float, hi: float) -> str:
     """Wrap an expression with min/max clamping."""
     return f"min({hi},max({lo},{expr}))"

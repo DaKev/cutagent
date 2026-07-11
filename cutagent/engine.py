@@ -17,6 +17,11 @@ from cutagent.errors import (
     CutAgentError,
     recovery_hints,
 )
+from cutagent.input_hardening import (
+    reject_control_chars,
+    validate_resource_token,
+    validate_safe_output_path,
+)
 from cutagent.models import (
     EDL,
     AnimateOp,
@@ -36,13 +41,18 @@ from cutagent.models import (
     TrimOp,
     VolumeOp,
 )
-from cutagent.operations import concat, crop, extract_stream, fade, reorder, resize, speed, split, trim
-from cutagent.text_ops import add_text
-from cutagent.input_hardening import (
-    reject_control_chars,
-    validate_resource_token,
-    validate_safe_output_path,
+from cutagent.operations import (
+    concat,
+    crop,
+    extract_stream,
+    fade,
+    reorder,
+    resize,
+    speed,
+    split,
+    trim,
 )
+from cutagent.text_ops import add_text
 
 # ---------------------------------------------------------------------------
 # Reference resolution
@@ -68,7 +78,7 @@ def _is_reference(value: str) -> bool:
 
 def _is_input_reference(value: str) -> bool:
     """Check if a string is an input reference like '$input.0', '$input.1'."""
-    return value.startswith(_INPUT_REF_PREFIX) and value[len(_INPUT_REF_PREFIX):].isdigit()
+    return value.startswith(_INPUT_REF_PREFIX) and value[len(_INPUT_REF_PREFIX) :].isdigit()
 
 
 def _is_named_reference(value: str) -> bool:
@@ -79,7 +89,9 @@ def _is_named_reference(value: str) -> bool:
     return bool(name) and not name[0].isdigit()
 
 
-def _resolve_ref(value: str, results: dict[int, str], split_segments: dict[int, list[str]] | None = None) -> str:
+def _resolve_ref(
+    value: str, results: dict[int, str], split_segments: dict[int, list[str]] | None = None
+) -> str:
     """Resolve a $N reference to the temp file path of that operation's output.
 
     If the reference has a sub-index like $N.M, it resolves to the Mth segment
@@ -92,15 +104,23 @@ def _resolve_ref(value: str, results: dict[int, str], split_segments: dict[int, 
         if split_segments is None or idx not in split_segments:
             raise CutAgentError(
                 code=INVALID_REFERENCE,
-                message=f"Reference {value} points to segment {sub_idx} of operation {idx}, which has no segments",
-                recovery=["Use $N.M only for operations that return multiple segments (e.g. split)"],
+                message=(
+                    f"Reference {value} points to segment {sub_idx} of operation {idx}, "
+                    "which has no segments"
+                ),
+                recovery=[
+                    "Use $N.M only for operations that return multiple segments (e.g. split)"
+                ],
                 context={"reference": value},
             )
         segments = split_segments[idx]
         if sub_idx < 0 or sub_idx >= len(segments):
             raise CutAgentError(
                 code=INVALID_REFERENCE,
-                message=f"Reference {value} points to segment {sub_idx}, but operation {idx} only has {len(segments)} segments",
+                message=(
+                    f"Reference {value} points to segment {sub_idx}, but operation {idx} "
+                    f"only has {len(segments)} segments"
+                ),
                 recovery=[f"Use indices between 0 and {len(segments) - 1}"],
                 context={"reference": value, "segments_count": len(segments)},
             )
@@ -119,13 +139,15 @@ def _resolve_ref(value: str, results: dict[int, str], split_segments: dict[int, 
 
 def _resolve_input_ref(value: str, inputs: list[str]) -> str:
     """Resolve a $input.N reference to the corresponding input file path."""
-    idx = int(value[len(_INPUT_REF_PREFIX):])
+    idx = int(value[len(_INPUT_REF_PREFIX) :])
     if idx < 0 or idx >= len(inputs):
         raise CutAgentError(
             code=INVALID_REFERENCE,
             message=f"Reference {value} points to input {idx}, but only {len(inputs)} inputs exist",
             recovery=[
-                f"Use $input.0 through $input.{len(inputs) - 1}" if inputs else "Add inputs to the EDL",
+                f"Use $input.0 through $input.{len(inputs) - 1}"
+                if inputs
+                else "Add inputs to the EDL",
             ],
             context={"reference": value, "input_count": len(inputs)},
         )
@@ -140,7 +162,8 @@ def _resolve_named_ref(value: str, named_results: dict[str, str]) -> str:
             code=INVALID_REFERENCE,
             message=f"Named reference {value} not found — no prior operation has id={name!r}",
             recovery=[
-                f"Available named operations: {list(named_results.keys())}" if named_results
+                f"Available named operations: {list(named_results.keys())}"
+                if named_results
                 else "Add 'id' fields to operations to enable named references",
             ],
             context={"reference": value, "available_names": list(named_results.keys())},
@@ -181,6 +204,7 @@ def _resolve_segments(
 # EDL parsing
 # ---------------------------------------------------------------------------
 
+
 def parse_edl(raw: str | dict[str, Any]) -> EDL:
     """Parse a JSON string or dict into a validated EDL object.
 
@@ -207,6 +231,14 @@ def parse_edl(raw: str | dict[str, Any]) -> EDL:
     else:
         data = raw
 
+    if not isinstance(data, dict):
+        raise CutAgentError(
+            code=INVALID_EDL,
+            message="EDL must be a JSON object",
+            recovery=["Wrap the EDL in a top-level JSON object"],
+            context={"expected_type": "object"},
+        )
+
     for required in ("version", "inputs", "operations", "output"):
         if required not in data:
             raise CutAgentError(
@@ -224,12 +256,54 @@ def parse_edl(raw: str | dict[str, Any]) -> EDL:
             context={"supported_version": "1.0", "provided_version": data.get("version")},
         )
 
+    if not isinstance(data["inputs"], list) or not all(
+        isinstance(item, str) for item in data["inputs"]
+    ):
+        raise CutAgentError(
+            code=INVALID_EDL,
+            message="EDL field 'inputs' must be an array of file path strings",
+            recovery=['Use inputs like: ["input.mp4", "music.mp3"]'],
+            context={"field": "inputs", "expected_type": "array[string]"},
+        )
+
+    if not isinstance(data["operations"], list):
+        raise CutAgentError(
+            code=INVALID_EDL,
+            message="EDL field 'operations' must be an array of operation objects",
+            recovery=['Use operations like: [{"op": "trim", ...}]'],
+            context={"field": "operations", "expected_type": "array[object]"},
+        )
+    for idx, operation in enumerate(data["operations"]):
+        if not isinstance(operation, dict):
+            raise CutAgentError(
+                code=INVALID_EDL,
+                message=f"EDL field 'operations[{idx}]' must be an operation object",
+                recovery=["Each operation must be a JSON object with an 'op' field"],
+                context={"field": f"operations[{idx}]", "expected_type": "object"},
+            )
+
+    if not isinstance(data["output"], dict):
+        raise CutAgentError(
+            code=INVALID_EDL,
+            message="EDL field 'output' must be an object with at least a 'path'",
+            recovery=['Use output like: {"path": "out.mp4", "codec": "copy"}'],
+            context={"field": "output", "expected_type": "object"},
+        )
+    if "path" not in data["output"]:
+        raise CutAgentError(
+            code=MISSING_FIELD,
+            message="EDL output missing required field: 'path'",
+            recovery=["Add output.path to the EDL"],
+            context={"field": "output.path", "missing_field": "path"},
+        )
+
     return EDL.from_dict(data)
 
 
 # ---------------------------------------------------------------------------
 # EDL execution
 # ---------------------------------------------------------------------------
+
 
 def execute_edl(
     raw: str | dict[str, Any],
@@ -269,10 +343,12 @@ def execute_edl(
             if progress_callback:
                 progress_callback(idx + 1, total_ops, op_name, "running")
 
-            result = _execute_operation(op, idx, results, temp_dir, codec, edl.inputs, named_results, split_segments)
+            result = _execute_operation(
+                op, idx, results, temp_dir, codec, edl.inputs, named_results, split_segments
+            )
             results[idx] = result.output_path
-            if hasattr(result, "_split_segments"):
-                split_segments[idx] = result._split_segments
+            if result.split_segments:
+                split_segments[idx] = result.split_segments
             if getattr(op, "id", None):
                 named_results[op.id] = result.output_path
             all_warnings.extend(result.warnings)
@@ -336,11 +412,7 @@ def _execute_operation(
             # but we register all segments so they can be referenced via $idx.0, $idx.1, etc.
             # E.g. $2 -> $2.0. If the user wants segment 1, they use $2.1
             res = split_results[0]
-            # Monkey-patch an attribute so execute_edl can extract them if it wants,
-            # though the cleaner way would be adjusting the resolution logic. Let's do it right.
-            # Wait, our resolution logic relies on string keys for named_results or int keys for results.
-            # We'll update the results dict after this function returns.
-            setattr(res, "_split_segments", [s.output_path for s in split_results])
+            res.split_segments = [s.output_path for s in split_results]
             return res
         return OperationResult(success=True, output_path=prefix)
 
@@ -425,7 +497,9 @@ def _execute_operation(
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return mix_audio(
-            source, audio, out,
+            source,
+            audio,
+            out,
             mix_level=op.mix_level,
             codec=codec if codec != "copy" else "libx264",
         )
@@ -435,7 +509,8 @@ def _execute_operation(
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return adjust_volume(
-            source, out,
+            source,
+            out,
             gain_db=op.gain_db,
             codec=codec,
         )
@@ -452,7 +527,8 @@ def _execute_operation(
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return normalize_audio(
-            source, out,
+            source,
+            out,
             target_lufs=op.target_lufs,
             true_peak_dbtp=op.true_peak_dbtp,
             codec=codec if codec != "copy" else "libx264",
@@ -463,7 +539,9 @@ def _execute_operation(
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return add_text(
-            source, op.entries, out,
+            source,
+            op.entries,
+            out,
             codec=codec if codec != "copy" else "libx264",
         )
 
@@ -475,7 +553,9 @@ def _execute_operation(
         ext = Path(source).suffix or ext
         out = str(Path(temp_dir) / f"op_{idx:03d}{ext}")
         return animate(
-            source, op.layers, out,
+            source,
+            op.layers,
+            out,
             fps=op.fps,
             codec=codec if codec != "copy" else "libx264",
         )
@@ -483,5 +563,7 @@ def _execute_operation(
     raise CutAgentError(
         code=INVALID_EDL,
         message=f"Unsupported operation at index {idx}: {type(op).__name__}",
-        recovery=["Use one of: trim, split, concat, reorder, extract, fade, speed, crop, resize, mix_audio, volume, replace_audio, normalize, text, animate"],
+        recovery=[
+            "Run 'cutagent capabilities' to see all supported operations",
+        ],
     )

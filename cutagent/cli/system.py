@@ -1,7 +1,10 @@
+from typing import Any
+
 import typer
 
-from cutagent.cli.utils import json_out
+from cutagent.cli.utils import JsonTyperCommand, json_out
 from cutagent.schema_registry import (
+    analysis_command_schema,
     cli_command_schema,
     edl_schema,
     operation_names,
@@ -11,13 +14,14 @@ from cutagent.schema_registry import (
 
 app = typer.Typer(help="System and capability commands")
 
-@app.command("capabilities")
+
+@app.command("capabilities", cls=JsonTyperCommand)
 def capabilities() -> int:
     """Output machine-readable schema of all operations."""
     return json_out(capabilities_payload())
 
 
-def capabilities_payload() -> dict:
+def capabilities_payload() -> dict[str, Any]:
     """Return machine-readable capability data for agent clients."""
     return {
         "version": "1.0",
@@ -31,16 +35,32 @@ def capabilities_payload() -> dict:
             "analysis": {
                 "description": "Understand the source material before making any cuts",
                 "commands": [
-                    "probe", "summarize", "scenes", "silence", "beats",
-                    "keyframes", "audio-levels", "frames", "thumbnail",
+                    "probe",
+                    "summarize",
+                    "scenes",
+                    "silence",
+                    "beats",
+                    "keyframes",
+                    "audio-levels",
+                    "frames",
+                    "thumbnail",
                 ],
             },
             "editing": {
                 "description": "Cut, arrange, and pace the video",
-                "operations": ["trim", "split", "concat", "reorder", "extract", "speed", "crop", "resize"],
+                "operations": [
+                    "trim",
+                    "split",
+                    "concat",
+                    "reorder",
+                    "extract",
+                    "speed",
+                    "crop",
+                    "resize",
+                ],
             },
             "audio_polish": {
-                "description": "Professional audio — always consider these (the #1 difference between amateur and professional edits)",
+                "description": "Professional audio polish — always consider this phase",
                 "operations": ["normalize", "mix_audio", "volume", "replace_audio"],
             },
             "visual_polish": {
@@ -50,7 +70,7 @@ def capabilities_payload() -> dict:
         },
         "quality_checklist": [
             "Audio normalized? (normalize) — inconsistent volume is the #1 amateur mistake",
-            "Transitions smooth? (fade, concat+crossfade) — hard cuts between unrelated clips feel jarring",
+            "Transitions smooth? (fade, concat+crossfade) — avoid jarring hard cuts",
             "Titles/context added? (text, animate) — viewers need to know what they are watching",
             "Background music? (mix_audio at 0.1–0.2) — subtle music fills silence and sets mood",
             "Pacing right? (speed) — slow parts lose viewer attention, consider speeding up",
@@ -181,7 +201,7 @@ def capabilities_payload() -> dict:
                 "edl_compatible": True,
             },
             "text": {
-                "description": "Burn text overlays, titles, descriptions, or annotations onto a video",
+                "description": "Burn text overlays, titles, or annotations onto a video",
                 "fields": {
                     "op": "'text'",
                     "source": "str",
@@ -189,15 +209,15 @@ def capabilities_payload() -> dict:
                 },
                 "entry_fields": {
                     "text": "str (required — the text to display)",
-                    "position": "str (default 'center'; presets: center, top-center, bottom-center, "
-                                "top-left, top-right, bottom-left, bottom-right; or 'x,y')",
+                    "position": "str (preset like center, top-center, bottom-left; "
+                    "top-left, top-right, bottom-left, bottom-right; or 'x,y')",
                     "font_size": "int (default 48)",
                     "font_color": "str (default 'white'; any FFmpeg color name or hex)",
                     "start": "time (optional — when text appears)",
                     "end": "time (optional — when text disappears)",
                     "bg_color": "str (optional — e.g. 'black@0.5' for semi-transparent background)",
                     "bg_padding": "int (default 10 — padding around text when bg_color is set)",
-                    "font": "str (optional — font family name; auto-detects system sans-serif if omitted)",
+                    "font": "str (optional — font family name; auto-detected if omitted)",
                     "shadow_color": "str (optional — e.g. 'black' for drop shadow behind text)",
                     "shadow_offset": "int (default 0 — pixel offset for shadow in both x and y)",
                     "stroke_color": "str (optional — e.g. 'black' for text outline/border)",
@@ -207,7 +227,7 @@ def capabilities_payload() -> dict:
                 "edl_compatible": True,
             },
             "animate": {
-                "description": "Apply keyframe-driven animations (text/image layers) onto a video — Remotion-style declarative motion",
+                "description": "Apply keyframe-driven text/image animations onto a video",
                 "fields": {
                     "op": "'animate'",
                     "source": "str",
@@ -222,8 +242,8 @@ def capabilities_payload() -> dict:
                     "text": "str (required for text layers)",
                     "font_size": "int (default 48, for text layers)",
                     "font_color": "str (default 'white', for text layers)",
-                    "font": "str (optional, for text layers; auto-detects system sans-serif if omitted)",
-                    "bg_color": "str (optional — e.g. 'black@0.5' for semi-transparent background box)",
+                    "font": "str (optional, for text layers; auto-detected if omitted)",
+                    "bg_color": "str (optional — e.g. 'black@0.5' for background box)",
                     "bg_padding": "int (default 10 — padding around text when bg_color is set)",
                     "shadow_color": "str (optional — e.g. 'black' for drop shadow behind text)",
                     "shadow_offset": "int (default 0 — pixel offset for shadow in both x and y)",
@@ -233,9 +253,9 @@ def capabilities_payload() -> dict:
                 },
                 "property_fields": {
                     "keyframes": "list[{t: float, value: float}] — time/value pairs",
-                    "easing": "str (default 'linear'; options: linear, ease-in, ease-out, ease-in-out, spring)",
+                    "easing": "str (linear, ease-in, ease-out, ease-in-out, spring)",
                 },
-                "keyframe_t_note": "t is absolute timeline time in seconds, not relative to layer start",
+                "keyframe_t_note": "t is absolute timeline time, not relative to layer start",
                 "animatable_properties": {
                     "text": ["x", "y", "opacity", "font_size"],
                     "image": ["x", "y", "opacity", "scale"],
@@ -245,49 +265,92 @@ def capabilities_payload() -> dict:
             },
         },
         "operation_examples": {
-            "_note": "All fields are top-level in the operation object — there is NO 'params' wrapper",
+            "_note": "Operation fields are top-level; there is no 'params' wrapper",
             "trim": {"op": "trim", "source": "$input.0", "start": "00:00:04", "end": "00:00:12"},
             "split": {"op": "split", "source": "$input.0", "points": ["00:05:00", "00:10:00"]},
             "concat": {"op": "concat", "segments": ["$0", "$1"]},
             "concat_crossfade": {
-                "op": "concat", "segments": ["$0", "$1"],
-                "transition": "crossfade", "transition_duration": 0.5,
+                "op": "concat",
+                "segments": ["$0", "$1"],
+                "transition": "crossfade",
+                "transition_duration": 0.5,
             },
             "fade": {"op": "fade", "source": "$0", "fade_in": 1.0, "fade_out": 1.0},
             "speed": {"op": "speed", "source": "$0", "factor": 2.0},
-            "crop": {"op": "crop", "source": "$input.0", "x": 160, "y": 0, "width": 320, "height": 480},
-            "resize": {"op": "resize", "source": "$0", "width": 1080, "height": 1920, "fit": "contain"},
+            "crop": {
+                "op": "crop",
+                "source": "$input.0",
+                "x": 160,
+                "y": 0,
+                "width": 320,
+                "height": 480,
+            },
+            "resize": {
+                "op": "resize",
+                "source": "$0",
+                "width": 1080,
+                "height": 1920,
+                "fit": "contain",
+            },
             "extract": {"op": "extract", "source": "$input.0", "stream": "audio"},
             "mix_audio": {"op": "mix_audio", "source": "$0", "audio": "$input.1", "mix_level": 0.2},
             "volume": {"op": "volume", "source": "$0", "gain_db": 6.0},
             "replace_audio": {"op": "replace_audio", "source": "$0", "audio": "$input.1"},
             "normalize": {"op": "normalize", "source": "$0"},
             "text": {
-                "op": "text", "source": "$input.0",
+                "op": "text",
+                "source": "$input.0",
                 "entries": [
-                    {"text": "Interview Title", "position": "center", "font_size": 72,
-                     "font_color": "white", "start": "0", "end": "3", "bg_color": "black@0.5"},
+                    {
+                        "text": "Interview Title",
+                        "position": "center",
+                        "font_size": 72,
+                        "font_color": "white",
+                        "start": "0",
+                        "end": "3",
+                        "bg_color": "black@0.5",
+                    },
                 ],
             },
             "text_lower_third": {
-                "op": "text", "source": "$0",
+                "op": "text",
+                "source": "$0",
                 "entries": [
-                    {"text": "Jane Doe — CEO", "position": "bottom-left", "font_size": 36,
-                     "font_color": "white", "bg_color": "black@0.6", "bg_padding": 12,
-                     "start": "00:00:02", "end": "00:00:08"},
+                    {
+                        "text": "Jane Doe — CEO",
+                        "position": "bottom-left",
+                        "font_size": 36,
+                        "font_color": "white",
+                        "bg_color": "black@0.6",
+                        "bg_padding": 12,
+                        "start": "00:00:02",
+                        "end": "00:00:08",
+                    },
                 ],
             },
             "animate": {
-                "op": "animate", "source": "$input.0", "fps": 30,
+                "op": "animate",
+                "source": "$input.0",
+                "fps": 30,
                 "layers": [
                     {
-                        "type": "text", "text": "Hello World",
-                        "font_size": 48, "font_color": "white",
-                        "bg_color": "black@0.5", "bg_padding": 12,
-                        "start": 0.0, "end": 3.0,
+                        "type": "text",
+                        "text": "Hello World",
+                        "font_size": 48,
+                        "font_color": "white",
+                        "bg_color": "black@0.5",
+                        "bg_padding": 12,
+                        "start": 0.0,
+                        "end": 3.0,
                         "properties": {
-                            "x": {"keyframes": [{"t": 0.0, "value": -200}, {"t": 1.0, "value": 100}], "easing": "ease-out"},
-                            "opacity": {"keyframes": [{"t": 0.0, "value": 0.0}, {"t": 0.5, "value": 1.0}], "easing": "linear"},
+                            "x": {
+                                "keyframes": [{"t": 0.0, "value": -200}, {"t": 1.0, "value": 100}],
+                                "easing": "ease-out",
+                            },
+                            "opacity": {
+                                "keyframes": [{"t": 0.0, "value": 0.0}, {"t": 0.5, "value": 1.0}],
+                                "easing": "linear",
+                            },
                         },
                     },
                 ],
@@ -298,7 +361,7 @@ def capabilities_payload() -> dict:
             "required_fields": ["version", "inputs", "operations", "output"],
             "version": "1.0",
             "inputs": "list[str] — source file paths",
-            "operations": "list[op] — sequential operations (each op can have optional 'id' for named references)",
+            "operations": "list[op] — sequential operations; optional 'id' enables references",
             "output": {"path": "str", "codec": "'copy' | codec_name"},
             "references": {
                 "$input.N": "Reference input file by index (e.g. $input.0 for the first input)",
@@ -339,15 +402,20 @@ def capabilities_payload() -> dict:
             "beats",
             "summarize",
         ],
-        "exit_codes": {"0": "success", "1": "validation_error", "2": "execution_error", "3": "system_error"},
+        "exit_codes": {
+            "0": "success",
+            "1": "validation_error",
+            "2": "execution_error",
+            "3": "system_error",
+        },
         "agent_workflow": {
-            "_note": "Professional editing has 4 phases. Skipping audio or visual polish produces amateur results.",
+            "_note": "Professional editing has 4 phases; audio/visual polish matters.",
             "phases": {
                 "1_analyze": {
                     "name": "Analyze the source material",
-                    "why": "You cannot make good editing decisions without understanding the content",
+                    "why": "Good editing decisions require understanding the content",
                     "steps": [
-                        "Run 'summarize' with --frame-dir to get content map and scene preview frames",
+                        "Run 'summarize' with --frame-dir for content map and frames",
                         "Review scene frames to understand visual content of each scene",
                         "Run 'beats' if music or rhythm-aligned cuts are relevant",
                         "Use 'suggested_cut_points' and beat timestamps to plan transitions",
@@ -367,7 +435,7 @@ def capabilities_payload() -> dict:
                     "why": "Bad audio ruins good video — this phase is NOT optional",
                     "steps": [
                         "Use 'normalize' to even out loudness (always do this)",
-                        "Use 'mix_audio' to layer background music at a subtle level (mix_level 0.1–0.2)",
+                        "Use 'mix_audio' for subtle background music (mix_level 0.1–0.2)",
                         "Use 'volume' to boost quiet clips or reduce loud ones before concat",
                         "Use 'crossfade' transition in concat for smooth audio between clips",
                     ],
@@ -379,15 +447,22 @@ def capabilities_payload() -> dict:
                         "Apply 'fade' (fade_in/fade_out) for polished opening and closing",
                         "Use 'text' to add titles, lower-thirds, or annotations with timed display",
                         "Use 'animate' for motion graphics (slide-in titles, fade-in captions)",
-                        "After text/animate, extract frames at review_timestamps to verify overlays",
+                        "After text/animate, extract frames at review_timestamps",
                     ],
                 },
             },
-            "execute": "Combine all operations into a single EDL for multi-step edits with $N references",
+            "execute": "Combine operations into one EDL using $N references",
         },
         "progress_output": {
             "description": "During 'execute', progress is emitted as JSONL on stderr",
-            "format": {"progress": {"step": "int", "total": "int", "op": "str", "status": "'running' | 'done'"}},
+            "format": {
+                "progress": {
+                    "step": "int",
+                    "total": "int",
+                    "op": "str",
+                    "status": "'running' | 'done'",
+                }
+            },
             "suppress": "Use --quiet / -q to suppress progress output",
         },
         "validate_output": {
@@ -397,8 +472,9 @@ def capabilities_payload() -> dict:
                 "estimated_duration_formatted": "HH:MM:SS.mmm or absent if unknown",
             },
         },
+        "analysis_schema": analysis_command_schema().to_dict(),
         "recipes": {
-            "_note": "Common editing patterns — each combines multiple operations for professional results",
+            "_note": "Common editing patterns combining multiple operations",
             "interview_cleanup": {
                 "description": "Clean up an interview recording",
                 "operations": [
@@ -415,7 +491,10 @@ def capabilities_payload() -> dict:
                     {"op": "summarize", "why": "Identify scene boundaries and key moments"},
                     {"op": "trim", "why": "Extract the best clips (multiple trims)"},
                     {"op": "normalize", "why": "Even out audio levels across clips"},
-                    {"op": "concat+crossfade", "why": "Join clips with smooth crossfade transitions"},
+                    {
+                        "op": "concat+crossfade",
+                        "why": "Join clips with smooth crossfade transitions",
+                    },
                     {"op": "mix_audio", "why": "Add background music to tie clips together"},
                     {"op": "text", "why": "Add title card at start and section labels"},
                     {"op": "fade", "why": "Fade in at start, fade out at end"},
@@ -437,7 +516,7 @@ def capabilities_payload() -> dict:
             "crossfade and fade require re-encoding (codec must not be 'copy')",
             "Use 'libx264' codec when transitions or fades are needed",
             "Scene frames at 10/50/90% offsets give a filmstrip of each scene",
-            "Operations needing re-encode: fade, crossfade concat, speed, crop, resize, mix_audio, normalize, text, animate",
+            "Re-encode for fade, crossfade, speed, crop, resize, audio, text, animate",
             "Use 'speed' with factor <1 for slow-motion, >1 for fast-forward",
             "Use $input.0 in operations to reference the first input file",
             "Use --edl-json to pass EDL inline without writing a temp file",
@@ -446,15 +525,18 @@ def capabilities_payload() -> dict:
             "Use 'beats' to detect rhythm — cut on beats for music-driven edits",
             "Use 'volume' to boost quiet clips or reduce loud ones (gain_db in dB)",
             "Use --entries-file / --layers-file to read JSON from a file instead of inline",
-            "text and animate output includes review_timestamps — use with 'frames --at' to verify overlays",
+            "Use review_timestamps with 'frames --at' to verify text/animate overlays",
             "Use bg_color + shadow_color on animate text layers for readable lower-thirds",
         ],
     }
 
 
-@app.command("schema")
+@app.command("schema", cls=JsonTyperCommand)
 def schema(
-    target: str = typer.Argument("index", help="Schema target: index|edl|operation|command|capabilities"),
+    target: str = typer.Argument(
+        "index",
+        help="Schema target: index|edl|operation|command|analysis|capabilities",
+    ),
     name: str | None = typer.Argument(None, help="Optional item name, e.g. operation name"),
 ) -> int:
     """Output machine-readable schema for commands, operations, and EDL."""
@@ -464,39 +546,56 @@ def schema(
         return json_out({"target": "edl", "schema": edl_schema()})
     if target == "command":
         return json_out({"target": "command", "schema": cli_command_schema()})
+    if target == "analysis":
+        return json_out({"target": "analysis", "schema": analysis_command_schema().to_dict()})
     if target == "capabilities":
         return json_out({"target": "capabilities", "schema": capabilities_payload()})
     if target == "operation":
         if not name:
-            return json_out({
-                "error": True,
-                "code": "MISSING_FIELD",
-                "message": "schema target 'operation' requires an operation name",
-                "recovery": [f"Pass one of: {', '.join(operation_names())}"],
-            }, exit_code=1)
+            return json_out(
+                {
+                    "error": True,
+                    "code": "MISSING_FIELD",
+                    "message": "schema target 'operation' requires an operation name",
+                    "recovery": [f"Pass one of: {', '.join(operation_names())}"],
+                },
+                exit_code=1,
+            )
         try:
-            return json_out({
-                "target": "operation",
-                "name": name,
-                "schema": operation_payload_schema(name),
-            })
+            return json_out(
+                {
+                    "target": "operation",
+                    "name": name,
+                    "schema": operation_payload_schema(name),
+                }
+            )
         except ValueError:
-            return json_out({
-                "error": True,
-                "code": "UNKNOWN_OPERATION",
-                "message": f"Unknown operation: {name!r}",
-                "recovery": [f"Use one of: {', '.join(operation_names())}"],
-            }, exit_code=1)
+            return json_out(
+                {
+                    "error": True,
+                    "code": "UNKNOWN_OPERATION",
+                    "message": f"Unknown operation: {name!r}",
+                    "recovery": [f"Use one of: {', '.join(operation_names())}"],
+                },
+                exit_code=1,
+            )
 
-    return json_out({
-        "error": True,
-        "code": "INVALID_ARGUMENT",
-        "message": f"Unknown schema target: {target!r}",
-        "recovery": ["Use one of: index, edl, operation, command, capabilities"],
-    }, exit_code=1)
+    return json_out(
+        {
+            "error": True,
+            "code": "INVALID_ARGUMENT",
+            "message": f"Unknown schema target: {target!r}",
+            "recovery": [
+                "Use one of: index, edl, operation, command, analysis, capabilities",
+            ],
+        },
+        exit_code=1,
+    )
 
-@app.command("doctor")
+
+@app.command("doctor", cls=JsonTyperCommand)
 def doctor() -> int:
     """Run diagnostic checks and report system health."""
     from cutagent.doctor import run_doctor
+
     return json_out(run_doctor())

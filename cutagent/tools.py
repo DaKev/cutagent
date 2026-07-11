@@ -22,7 +22,10 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
             "type": "function",
             "function": {
                 "name": "cutagent_capabilities",
-                "description": "Discover all available video editing capabilities, operations, and the exact JSON schema for the Edit Decision List (EDL). Call this first to understand how to use CutAgent.",
+                "description": (
+                    "Discover video editing capabilities, operations, and EDL schemas. "
+                    "Call this first."
+                ),
                 "output_schema": capabilities_payload(),
                 "parameters": {
                     "type": "object",
@@ -35,7 +38,7 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
             "type": "function",
             "function": {
                 "name": "cutagent_probe",
-                "description": "Probe a media file for metadata, including duration, resolution, codecs, and streams.",
+                "description": "Probe media metadata: duration, resolution, codecs, and streams.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -52,7 +55,9 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
             "type": "function",
             "function": {
                 "name": "cutagent_summarize",
-                "description": "Build a full content summary including scene boundaries, silence gaps, and suggested cut points.",
+                "description": (
+                    "Build a content summary with scenes, silences, and suggested cuts."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -74,7 +79,7 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
             "type": "function",
             "function": {
                 "name": "cutagent_validate",
-                "description": "Validate an Edit Decision List (EDL) without executing it. Always run this before execute to catch errors early.",
+                "description": "Validate an EDL without executing it. Run before execute.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -91,7 +96,7 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
             "type": "function",
             "function": {
                 "name": "cutagent_execute",
-                "description": "Execute an Edit Decision List (EDL) to perform the actual video editing operations.",
+                "description": "Execute an Edit Decision List (EDL).",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -108,7 +113,7 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
             "type": "function",
             "function": {
                 "name": "cutagent_schema",
-                "description": "Query machine-readable schema metadata for CutAgent commands, EDL, and operation payloads.",
+                "description": "Query schema metadata for commands, EDL, and operation payloads.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -119,7 +124,7 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
                         },
                         "name": {
                             "type": "string",
-                            "description": "Optional name for target-specific schemas (e.g. operation name)",
+                            "description": "Optional name, such as an operation name",
                         },
                     },
                     "required": ["target"],
@@ -160,14 +165,18 @@ def get_tool_schema(tool_name: str) -> dict[str, Any]:
 
     return schemas[tool_name]
 
+
 def dump_all_schemas() -> str:
     """Return a JSON array of all tool definitions for easy ingestion by AI agents."""
-    return json.dumps([
-        get_tool_schema("cutagent_capabilities"),
-        get_tool_schema("cutagent_probe"),
-        get_tool_schema("cutagent_summarize"),
-        get_tool_schema("cutagent_schema"),
-        get_tool_schema("cutagent_op"),
-        get_tool_schema("cutagent_validate"),
-        get_tool_schema("cutagent_execute"),
-    ], indent=2)
+    return json.dumps(
+        [
+            get_tool_schema("cutagent_capabilities"),
+            get_tool_schema("cutagent_probe"),
+            get_tool_schema("cutagent_summarize"),
+            get_tool_schema("cutagent_schema"),
+            get_tool_schema("cutagent_op"),
+            get_tool_schema("cutagent_validate"),
+            get_tool_schema("cutagent_execute"),
+        ],
+        indent=2,
+    )

@@ -3,20 +3,24 @@ import sys
 import click
 import typer
 
-from cutagent.cli.analysis import app as analysis_app
+from cutagent import __version__
 from cutagent.cli.agent import app as agent_app
+from cutagent.cli.analysis import app as analysis_app
 from cutagent.cli.audio import app as audio_app
 from cutagent.cli.editing import app as editing_app
 from cutagent.cli.execution import app as execution_app
 from cutagent.cli.system import app as system_app
-from cutagent.cli.utils import json_error, json_out
+from cutagent.cli.utils import JsonTyperGroup, json_error, json_out
 from cutagent.cli.visual import app as visual_app
 from cutagent.errors import EXIT_SYSTEM, EXIT_VALIDATION, CutAgentError
 
 app = typer.Typer(
+    cls=JsonTyperGroup,
     name="cutagent",
     help="Agent-first video cutting — all output is JSON",
     add_completion=False,
+    invoke_without_command=True,
+    no_args_is_help=True,
 )
 
 # Merge all commands into the main app
@@ -28,6 +32,21 @@ app.add_typer(editing_app, name="")
 app.add_typer(visual_app, name="")
 app.add_typer(audio_app, name="")
 app.add_typer(execution_app, name="")
+
+
+@app.callback()
+def root_options(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        is_eager=True,
+        help="Output the CutAgent version as JSON and exit",
+    ),
+) -> None:
+    """Handle root-level machine-readable options."""
+    if version:
+        json_out({"name": "cutagent", "version": __version__})
+        raise typer.Exit()
 
 
 def _usage_error_payload(exc: click.ClickException) -> dict[str, object]:
@@ -43,7 +62,11 @@ def _usage_error_payload(exc: click.ClickException) -> dict[str, object]:
             "error": True,
             "code": "MISSING_FIELD",
             "message": str(exc),
-            "recovery": [f"Provide required option {label}" if option else "Provide the missing required field"],
+            "recovery": [
+                f"Provide required option {label}"
+                if option
+                else "Provide the missing required field"
+            ],
             "context": {"missing": label},
         }
     return {
@@ -72,12 +95,18 @@ def main() -> None:
         # typer handles SystemExit
         if isinstance(exc, SystemExit):
             raise
-        sys.exit(json_out({
-            "error": True,
-            "code": "UNEXPECTED_ERROR",
-            "message": str(exc),
-            "recovery": ["This is an unexpected error — please report it"],
-        }, EXIT_SYSTEM))
+        sys.exit(
+            json_out(
+                {
+                    "error": True,
+                    "code": "UNEXPECTED_ERROR",
+                    "message": str(exc),
+                    "recovery": ["This is an unexpected error — please report it"],
+                },
+                EXIT_SYSTEM,
+            )
+        )
+
 
 if __name__ == "__main__":
     main()

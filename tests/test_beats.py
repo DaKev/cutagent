@@ -1,6 +1,6 @@
-from typing import Any
-
 """Tests for cutagent.probe.detect_beats — musical beat detection."""
+
+from typing import Any
 
 from cutagent.models import BeatInfo
 from cutagent.probe import detect_beats

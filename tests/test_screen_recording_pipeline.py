@@ -13,6 +13,8 @@ silence (e.g. pre-/post-session dead air).
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -27,7 +29,7 @@ from cutagent.models import format_time
 
 
 @pytest.fixture(scope="module")
-def screen_recording(tmp_path_factory) -> str:
+def screen_recording(tmp_path_factory: pytest.TempPathFactory) -> str:
     """Generate a synthetic 10-second 1280×720 screen recording.
 
     Audio pattern: 2s silence → 6s tone (content) → 2s silence.
@@ -37,18 +39,34 @@ def screen_recording(tmp_path_factory) -> str:
     out = str(tmp_path_factory.mktemp("recordings") / "screen.mp4")
     subprocess.run(
         [
-            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "testsrc=duration=10:size=1280x720:rate=30",
-            "-f", "lavfi", "-i",
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=10:size=1280x720:rate=30",
+            "-f",
+            "lavfi",
+            "-i",
             (
                 "anullsrc=r=44100:cl=stereo:d=2[s0];"
                 "sine=frequency=440:duration=6[t0];"
                 "anullsrc=r=44100:cl=stereo:d=2[s1];"
                 "[s0][t0][s1]concat=n=3:v=0:a=1"
             ),
-            "-c:v", "libx264", "-preset", "ultrafast",
-            "-c:a", "aac", "-b:a", "128k",
-            "-pix_fmt", "yuv420p",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-pix_fmt",
+            "yuv420p",
             "-shortest",
             out,
         ],
@@ -59,7 +77,7 @@ def screen_recording(tmp_path_factory) -> str:
 
 
 class TestScreenRecordingPipeline:
-    def test_probe_returns_expected_metadata(self, screen_recording):
+    def test_probe_returns_expected_metadata(self, screen_recording: str) -> None:
         """A freshly-recorded file is probed as valid 1280×720 media."""
         info = probe(screen_recording)
         assert info.duration == pytest.approx(10.0, abs=0.5)
@@ -68,7 +86,7 @@ class TestScreenRecordingPipeline:
         assert info.video_stream is not None
         assert info.audio_stream is not None
 
-    def test_silence_detection_finds_intro_and_outro(self, screen_recording):
+    def test_silence_detection_finds_intro_and_outro(self, screen_recording: str) -> None:
         """Silence detection identifies the intro and outro dead-air segments."""
         silences = detect_silence(screen_recording, threshold=-35.0, min_duration=0.5)
         assert len(silences) >= 2
@@ -77,7 +95,7 @@ class TestScreenRecordingPipeline:
         # Outro silence ends near the recording end
         assert silences[-1].end == pytest.approx(10.0, abs=0.5)
 
-    def test_trim_to_content_is_shorter(self, screen_recording, tmp_path):
+    def test_trim_to_content_is_shorter(self, screen_recording: str, tmp_path: Path) -> None:
         """Trimming out intro/outro silence produces a shorter clip."""
         silences = detect_silence(screen_recording, threshold=-35.0, min_duration=0.5)
         assert len(silences) >= 2
@@ -92,7 +110,11 @@ class TestScreenRecordingPipeline:
         trimmed = probe(out)
         assert trimmed.duration < probe(screen_recording).duration
 
-    def test_full_edl_trim_and_normalize(self, screen_recording, tmp_path):
+    def test_full_edl_trim_and_normalize(
+        self,
+        screen_recording: str,
+        tmp_path: Path,
+    ) -> None:
         """Full EDL pipeline: trim dead air, then normalize audio loudness."""
         silences = detect_silence(screen_recording, threshold=-35.0, min_duration=0.5)
         assert len(silences) >= 2
@@ -101,7 +123,7 @@ class TestScreenRecordingPipeline:
         content_end = format_time(silences[-1].start)
         out = str(tmp_path / "final.mp4")
 
-        edl = {
+        edl: dict[str, Any] = {
             "version": "1.0",
             "inputs": [screen_recording],
             "operations": [
@@ -127,11 +149,9 @@ class TestScreenRecordingPipeline:
         assert final.duration > 0
         assert final.duration < probe(screen_recording).duration
 
-    def test_normalize_standalone(self, screen_recording, tmp_path):
+    def test_normalize_standalone(self, screen_recording: str, tmp_path: Path) -> None:
         """normalize_audio produces a valid output file."""
         out = str(tmp_path / "normalized.mp4")
         result = normalize_audio(screen_recording, output=out, target_lufs=-16.0)
         assert result.success
-        assert probe(out).duration == pytest.approx(
-            probe(screen_recording).duration, abs=0.5
-        )
+        assert probe(out).duration == pytest.approx(probe(screen_recording).duration, abs=0.5)

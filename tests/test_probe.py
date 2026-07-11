@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from cutagent.errors import CutAgentError
+from cutagent.models import AudioLevel
 from cutagent.probe import (
     audio_levels,
     detect_scenes,
@@ -15,6 +16,7 @@ from cutagent.probe import (
     keyframes,
     probe,
     summarize,
+    summarize_audio_levels,
     thumbnail,
 )
 
@@ -126,6 +128,23 @@ class TestAudioAnalysis:
         assert len(levels) >= 4
         assert isinstance(levels[0].rms_db, float)
 
+    def test_audio_level_summary_groups_sustained_sections(self) -> None:
+        levels = [
+            AudioLevel(timestamp=0.0, rms_db=-30.0),
+            AudioLevel(timestamp=1.0, rms_db=-30.0),
+            AudioLevel(timestamp=2.0, rms_db=-10.0),
+            AudioLevel(timestamp=3.0, rms_db=-10.0),
+        ]
+        summary = summarize_audio_levels(levels, notable_change_threshold_db=5.0)
+        assert [section.classification for section in summary.notable_sections] == [
+            "quiet",
+            "loud",
+        ]
+        assert summary.notable_sections[0].start == 0.0
+        assert summary.notable_sections[0].end == 2.0
+        assert summary.notable_sections[1].start == 2.0
+        assert summary.notable_sections[1].end == 4.0
+
 
 class TestSummary:
     def test_summarize(self, test_video_with_silence: Any, output_dir: Any) -> None:
@@ -141,6 +160,8 @@ class TestSummary:
         result = summarize(test_video_with_silence)
         assert result.audio_levels == []
 
-    def test_summarize_includes_audio_levels_when_requested(self, test_video_with_silence: Any) -> None:
+    def test_summarize_includes_audio_levels_when_requested(
+        self, test_video_with_silence: Any
+    ) -> None:
         result = summarize(test_video_with_silence, include_audio_levels=True)
         assert len(result.audio_levels) >= 1

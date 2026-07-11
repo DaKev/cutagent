@@ -1,6 +1,7 @@
 """Tests for cutagent.validation — dry-run EDL checks."""
 
-
+import shutil
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -109,6 +110,61 @@ class TestValidateEDL:
         assert not result.valid
         codes = [e["code"] for e in result.errors]
         assert "INVALID_EDL" in codes
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("inputs", "video.mp4"),
+            ("operations", {"op": "trim"}),
+            ("output", "out.mp4"),
+        ],
+    )
+    def test_invalid_top_level_field_types_return_validation_errors(
+        self,
+        field: str,
+        value: Any,
+    ) -> None:
+        edl: dict[str, Any] = {
+            "version": "1.0",
+            "inputs": [],
+            "operations": [],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        edl[field] = value
+
+        result = validate_edl(edl)
+
+        assert not result.valid
+        assert result.errors[0]["code"] == "INVALID_EDL"
+        assert field in result.errors[0]["message"]
+
+    def test_operation_items_must_be_objects(self) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [],
+            "operations": ["trim"],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+
+        result = validate_edl(edl)
+
+        assert not result.valid
+        assert result.errors[0]["code"] == "INVALID_EDL"
+        assert "operations[0]" in result.errors[0]["message"]
+
+    def test_text_entry_missing_text_is_validation_error(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "text", "source": "$input.0", "entries": [{"position": "center"}]},
+            ],
+            "output": {"path": "out.mp4", "codec": "libx264"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        assert result.errors[0]["code"] == "MISSING_FIELD"
+        assert result.errors[0]["missing_field"] == "text"
 
     def test_invalid_time_format(self, test_video: Any) -> None:
         edl = {
@@ -387,6 +443,34 @@ class TestInputRefValidation:
         codes = [e["code"] for e in result.errors]
         assert "INVALID_REFERENCE" in codes
 
+    def test_trim_beyond_duration_with_input_ref(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "trim", "source": "$input.0", "start": "0", "end": "999"},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "TRIM_BEYOND_DURATION" in codes
+
+    def test_split_beyond_duration_with_input_ref(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "split", "source": "$input.0", "points": ["999"]},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "SPLIT_POINT_BEYOND_DURATION" in codes
+
     def test_input_ref_in_concat_segments(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
@@ -398,6 +482,35 @@ class TestInputRefValidation:
         }
         result = validate_edl(edl)
         assert result.valid
+
+    def test_split_segment_ref_in_concat_segments(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "split", "source": "$input.0", "points": ["2"]},
+                {"op": "concat", "segments": ["$0.1"]},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert result.valid
+        assert result.estimated_duration == pytest.approx(3.0, abs=0.2)
+
+    def test_split_segment_ref_out_of_range(self, test_video: Any) -> None:
+        edl = {
+            "version": "1.0",
+            "inputs": [test_video],
+            "operations": [
+                {"op": "split", "source": "$input.0", "points": ["2"]},
+                {"op": "concat", "segments": ["$0.2"]},
+            ],
+            "output": {"path": "out.mp4", "codec": "copy"},
+        }
+        result = validate_edl(edl)
+        assert not result.valid
+        codes = [e["code"] for e in result.errors]
+        assert "INVALID_REFERENCE" in codes
 
     def test_mixed_input_ref_and_op_ref(self, test_video: Any) -> None:
         edl = {
@@ -417,20 +530,23 @@ class TestInputRefValidation:
 class TestInputHardeningValidation:
     """Tests for hallucination-resistant input hardening."""
 
-    def test_rejects_query_fragments_in_source(self, test_video: Any) -> None:
+    def test_allows_valid_special_characters_in_source(
+        self, test_video: Any, tmp_path: Path
+    ) -> None:
+        special_path = tmp_path / "100% Final#1.mp4"
+        shutil.copy2(test_video, special_path)
         edl = {
             "version": "1.0",
-            "inputs": [test_video],
+            "inputs": [str(special_path)],
             "operations": [
-                {"op": "trim", "source": f"{test_video}?fields=name", "start": "0", "end": "1"},
+                {"op": "trim", "source": str(special_path), "start": "0", "end": "1"},
             ],
             "output": {"path": "out.mp4", "codec": "copy"},
         }
         result = validate_edl(edl)
-        assert not result.valid
-        assert any(e["code"] == "INVALID_ARGUMENT" for e in result.errors)
+        assert result.valid
 
-    def test_rejects_parent_traversal_in_output(self, test_video: Any) -> None:
+    def test_allows_parent_relative_output(self, test_video: Any) -> None:
         edl = {
             "version": "1.0",
             "inputs": [test_video],
@@ -440,8 +556,7 @@ class TestInputHardeningValidation:
             "output": {"path": "../out.mp4", "codec": "copy"},
         }
         result = validate_edl(edl)
-        assert not result.valid
-        assert any(e["code"] == "INVALID_ARGUMENT" for e in result.errors)
+        assert result.valid
 
 
 class TestAnimateValidation:
@@ -453,16 +568,23 @@ class TestAnimateValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "animate", "source": "$input.0", "fps": 30,
-                    "layers": [{
-                        "type": "text", "text": "Hello", "start": 0.0, "end": 3.0,
-                        "properties": {
-                            "opacity": {
-                                "keyframes": [{"t": 0, "value": 0}, {"t": 1, "value": 1}],
-                                "easing": "linear",
+                    "op": "animate",
+                    "source": "$input.0",
+                    "fps": 30,
+                    "layers": [
+                        {
+                            "type": "text",
+                            "text": "Hello",
+                            "start": 0.0,
+                            "end": 3.0,
+                            "properties": {
+                                "opacity": {
+                                    "keyframes": [{"t": 0, "value": 0}, {"t": 1, "value": 1}],
+                                    "easing": "linear",
+                                },
                             },
-                        },
-                    }],
+                        }
+                    ],
                 },
             ],
             "output": {"path": "out.mp4", "codec": "libx264"},
@@ -490,7 +612,8 @@ class TestAnimateValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "animate", "source": "$input.0",
+                    "op": "animate",
+                    "source": "$input.0",
                     "layers": [{"type": "video", "start": 0, "end": 1, "properties": {}}],
                 },
             ],
@@ -507,7 +630,8 @@ class TestAnimateValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "animate", "source": "$input.0",
+                    "op": "animate",
+                    "source": "$input.0",
                     "layers": [{"type": "text", "start": 0, "end": 1, "properties": {}}],
                 },
             ],
@@ -524,7 +648,8 @@ class TestAnimateValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "animate", "source": "$input.0",
+                    "op": "animate",
+                    "source": "$input.0",
                     "layers": [{"type": "image", "start": 0, "end": 1, "properties": {}}],
                 },
             ],
@@ -541,13 +666,19 @@ class TestAnimateValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "animate", "source": "$input.0",
-                    "layers": [{
-                        "type": "text", "text": "Hi", "start": 0, "end": 1,
-                        "properties": {
-                            "scale": {"keyframes": [{"t": 0, "value": 1}], "easing": "linear"},
-                        },
-                    }],
+                    "op": "animate",
+                    "source": "$input.0",
+                    "layers": [
+                        {
+                            "type": "text",
+                            "text": "Hi",
+                            "start": 0,
+                            "end": 1,
+                            "properties": {
+                                "scale": {"keyframes": [{"t": 0, "value": 1}], "easing": "linear"},
+                            },
+                        }
+                    ],
                 },
             ],
             "output": {"path": "out.mp4", "codec": "libx264"},
@@ -563,13 +694,19 @@ class TestAnimateValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "animate", "source": "$input.0",
-                    "layers": [{
-                        "type": "text", "text": "Hi", "start": 0, "end": 1,
-                        "properties": {
-                            "x": {"keyframes": [{"t": 0, "value": 0}], "easing": "bounce"},
-                        },
-                    }],
+                    "op": "animate",
+                    "source": "$input.0",
+                    "layers": [
+                        {
+                            "type": "text",
+                            "text": "Hi",
+                            "start": 0,
+                            "end": 1,
+                            "properties": {
+                                "x": {"keyframes": [{"t": 0, "value": 0}], "easing": "bounce"},
+                            },
+                        }
+                    ],
                 },
             ],
             "output": {"path": "out.mp4", "codec": "libx264"},
@@ -586,11 +723,17 @@ class TestAnimateValidation:
             "operations": [
                 {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
                 {
-                    "op": "animate", "source": "$0",
-                    "layers": [{
-                        "type": "text", "text": "Hi", "start": 0, "end": 3,
-                        "properties": {},
-                    }],
+                    "op": "animate",
+                    "source": "$0",
+                    "layers": [
+                        {
+                            "type": "text",
+                            "text": "Hi",
+                            "start": 0,
+                            "end": 3,
+                            "properties": {},
+                        }
+                    ],
                 },
             ],
             "output": {"path": "out.mp4", "codec": "libx264"},

@@ -30,14 +30,16 @@ class TestParseEDL:
         assert len(edl.operations) == 1
 
     def test_parse_json_string(self, test_video: Any) -> None:
-        edl_str = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "source": test_video, "start": "0", "end": "3"},
-            ],
-            "output": {"path": "out.mp4", "codec": "copy"},
-        })
+        edl_str = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "source": test_video, "start": "0", "end": "3"},
+                ],
+                "output": {"path": "out.mp4", "codec": "copy"},
+            }
+        )
         edl = parse_edl(edl_str)
         assert edl.version == "1.0"
 
@@ -114,14 +116,16 @@ class TestExecuteEDL:
 
     def test_execute_json_string(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "result.mp4")
-        edl_str = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "source": test_video, "start": "1", "end": "3"},
-            ],
-            "output": {"path": out, "codec": "copy"},
-        })
+        edl_str = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "source": test_video, "start": "1", "end": "3"},
+                ],
+                "output": {"path": out, "codec": "copy"},
+            }
+        )
         result = execute_edl(edl_str)
         assert result.success
 
@@ -290,6 +294,7 @@ class TestExecuteEDL:
             "output": {"path": out, "codec": "copy"},
         }
         calls = []
+
         def cb(step: Any, total: Any, op_name: Any, status: Any) -> None:
             calls.append((step, total, op_name, status))
 
@@ -313,6 +318,7 @@ class TestExecuteEDL:
             "output": {"path": out, "codec": "copy"},
         }
         calls = []
+
         def cb(step: Any, total: Any, op_name: Any, status: Any) -> None:
             calls.append((step, total, op_name, status))
 

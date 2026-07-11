@@ -15,12 +15,15 @@ from cutagent.validation import validate_edl
 # Drawtext availability check
 # ---------------------------------------------------------------------------
 
+
 def _ffmpeg_has_drawtext(ffmpeg_bin: str = "ffmpeg") -> bool:
     """Check if the given FFmpeg binary supports the drawtext filter."""
     try:
         result = subprocess.run(
             [ffmpeg_bin, "-filters"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return "drawtext" in result.stdout
     except Exception:
@@ -31,6 +34,7 @@ def _find_drawtext_ffmpeg() -> str | None:
     """Find an FFmpeg binary with drawtext support."""
     import shutil
     from pathlib import Path
+
     # Honour CUTAGENT_FFMPEG_DIR (used for testing with ffmpeg-full)
     ffmpeg_dir = os.environ.get("CUTAGENT_FFMPEG_DIR")
     if ffmpeg_dir:
@@ -42,9 +46,10 @@ def _find_drawtext_ffmpeg() -> str | None:
         return system
     try:
         from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise
+
         ffmpeg_path, _ = get_or_fetch_platform_executables_else_raise()
         if _ffmpeg_has_drawtext(ffmpeg_path):
-            return ffmpeg_path
+            return str(ffmpeg_path)
     except Exception:
         pass
     return None
@@ -53,7 +58,10 @@ def _find_drawtext_ffmpeg() -> str | None:
 _drawtext_ffmpeg = _find_drawtext_ffmpeg()
 requires_drawtext = pytest.mark.skipif(
     _drawtext_ffmpeg is None,
-    reason="FFmpeg with drawtext filter not available (install static-ffmpeg or rebuild FFmpeg with --enable-libfreetype)",
+    reason=(
+        "FFmpeg with drawtext filter not available "
+        "(install static-ffmpeg or rebuild FFmpeg with --enable-libfreetype)"
+    ),
 )
 
 
@@ -64,6 +72,7 @@ def _use_drawtext_ffmpeg() -> Generator[None, None, None]:
         yield
         return
     from cutagent.ffmpeg import reset_cache
+
     old = os.environ.get("CUTAGENT_FFMPEG")
     os.environ["CUTAGENT_FFMPEG"] = _drawtext_ffmpeg
     reset_cache()
@@ -78,6 +87,7 @@ def _use_drawtext_ffmpeg() -> Generator[None, None, None]:
 # ---------------------------------------------------------------------------
 # Direct API tests
 # ---------------------------------------------------------------------------
+
 
 @requires_drawtext
 class TestAddTextBasic:
@@ -98,11 +108,13 @@ class TestAddTextBasic:
 
     def test_text_with_background(self, test_video: Any, output_dir: Any) -> None:
         out = os.path.join(output_dir, "text_bg.mp4")
-        entries = [TextEntry(
-            text="With Background",
-            bg_color="black@0.5",
-            bg_padding=12,
-        )]
+        entries = [
+            TextEntry(
+                text="With Background",
+                bg_color="black@0.5",
+                bg_padding=12,
+            )
+        ]
         result = add_text(test_video, entries, out)
         assert result.success
         assert os.path.exists(out)
@@ -117,10 +129,18 @@ class TestAddTextBasic:
 
 @requires_drawtext
 class TestAddTextPositions:
-    @pytest.mark.parametrize("position", [
-        "center", "top-center", "bottom-center",
-        "top-left", "top-right", "bottom-left", "bottom-right",
-    ])
+    @pytest.mark.parametrize(
+        "position",
+        [
+            "center",
+            "top-center",
+            "bottom-center",
+            "top-left",
+            "top-right",
+            "bottom-left",
+            "bottom-right",
+        ],
+    )
     def test_position_presets(self, test_video: Any, output_dir: Any, position: Any) -> None:
         out = os.path.join(output_dir, f"text_{position}.mp4")
         entries = [TextEntry(text=f"At {position}", position=position)]
@@ -200,11 +220,13 @@ class TestAddTextErrors:
 # EDL integration tests
 # ---------------------------------------------------------------------------
 
+
 @requires_drawtext
 class TestTextEDLIntegration:
     def test_text_in_edl(self, test_video: Any, output_dir: Any) -> None:
         """Text operation works in a multi-step EDL."""
         from cutagent.engine import execute_edl
+
         out = os.path.join(output_dir, "edl_text.mp4")
         edl = {
             "version": "1.0",
@@ -212,7 +234,8 @@ class TestTextEDLIntegration:
             "operations": [
                 {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
                 {
-                    "op": "text", "source": "$0",
+                    "op": "text",
+                    "source": "$0",
                     "entries": [{"text": "EDL Title", "position": "center"}],
                 },
             ],
@@ -227,6 +250,7 @@ class TestTextEDLIntegration:
 # Validation tests
 # ---------------------------------------------------------------------------
 
+
 class TestTextValidation:
     def test_valid_text_edl(self, test_video: Any) -> None:
         edl = {
@@ -234,7 +258,8 @@ class TestTextValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "text", "source": "$input.0",
+                    "op": "text",
+                    "source": "$input.0",
                     "entries": [{"text": "Valid", "position": "center"}],
                 },
             ],
@@ -263,7 +288,8 @@ class TestTextValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "text", "source": "$input.0",
+                    "op": "text",
+                    "source": "$input.0",
                     "entries": [{"text": "Bad", "position": "invalid-spot"}],
                 },
             ],
@@ -280,7 +306,8 @@ class TestTextValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "text", "source": "$input.0",
+                    "op": "text",
+                    "source": "$input.0",
                     "entries": [{"text": "Bad", "font_size": -5}],
                 },
             ],
@@ -297,7 +324,8 @@ class TestTextValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "text", "source": "$input.0",
+                    "op": "text",
+                    "source": "$input.0",
                     "entries": [{"text": "Bad", "start": "5", "end": "2"}],
                 },
             ],
@@ -314,7 +342,8 @@ class TestTextValidation:
             "inputs": [test_video],
             "operations": [
                 {
-                    "op": "text", "source": "$input.0",
+                    "op": "text",
+                    "source": "$input.0",
                     "entries": [{"text": "OK", "position": "50,100"}],
                 },
             ],
@@ -330,7 +359,8 @@ class TestTextValidation:
             "operations": [
                 {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
                 {
-                    "op": "text", "source": "$0",
+                    "op": "text",
+                    "source": "$0",
                     "entries": [{"text": "Title"}],
                 },
             ],
@@ -344,6 +374,7 @@ class TestTextValidation:
 # ---------------------------------------------------------------------------
 # Model tests
 # ---------------------------------------------------------------------------
+
 
 class TestTextModels:
     def test_text_entry_to_dict(self) -> None:
@@ -364,9 +395,14 @@ class TestTextModels:
 
     def test_text_entry_roundtrip(self) -> None:
         original = TextEntry(
-            text="Test", position="bottom-center", font_size=36,
-            font_color="red", start="1", end="5",
-            bg_color="black@0.7", bg_padding=15,
+            text="Test",
+            position="bottom-center",
+            font_size=36,
+            font_color="red",
+            start="1",
+            end="5",
+            bg_color="black@0.7",
+            bg_padding=15,
         )
         d = original.to_dict()
         restored = TextEntry.from_dict(d)
@@ -377,6 +413,7 @@ class TestTextModels:
 
     def test_text_op_to_dict(self) -> None:
         from cutagent.models import TextOp
+
         op = TextOp(
             source="$input.0",
             entries=[TextEntry(text="Title", position="center")],
@@ -389,6 +426,7 @@ class TestTextModels:
 
     def test_text_op_parse(self) -> None:
         from cutagent.models import parse_operation
+
         data = {
             "op": "text",
             "source": "$input.0",

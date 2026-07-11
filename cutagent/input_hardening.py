@@ -10,7 +10,6 @@ from typing import Any
 from cutagent.errors import CutAgentError
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
-_DANGEROUS_TOKEN_RE = re.compile(r"[?#%]")
 _PROMPT_INJECTION_RE = re.compile(
     r"(ignore\s+previous\s+instructions|ignore\s+all\s+instructions|system\s+prompt|developer\s+message)",
     flags=re.IGNORECASE,
@@ -32,35 +31,14 @@ def reject_control_chars(value: str, field_name: str) -> None:
 
 
 def validate_resource_token(value: str, field_name: str) -> None:
-    """Reject malformed resource-like strings often hallucinated by agents."""
+    """Reject control characters while preserving valid filesystem names."""
     reject_control_chars(value, field_name)
-    if _DANGEROUS_TOKEN_RE.search(value):
-        raise CutAgentError(
-            code="INVALID_ARGUMENT",
-            message=f"{field_name} contains forbidden characters (?, #, %)",
-            recovery=[
-                "Remove query fragments or URL-encoded tokens",
-                "Pass only raw resource IDs or plain file paths",
-            ],
-            context={"field": field_name, "value": value},
-        )
 
 
 def validate_safe_output_path(path_value: str, field_name: str = "output") -> str:
     """Validate and normalize output paths for CLI writes."""
     validate_resource_token(path_value, field_name)
-    candidate = Path(path_value).expanduser()
-    if any(part == ".." for part in candidate.parts):
-        raise CutAgentError(
-            code="INVALID_ARGUMENT",
-            message=f"{field_name} must not contain parent traversal ('..')",
-            recovery=[
-                "Provide a direct path without '..'",
-                "Use a dedicated output directory under your workspace",
-            ],
-            context={"field": field_name, "path": path_value},
-        )
-    return str(candidate)
+    return str(Path(path_value).expanduser())
 
 
 def safe_json_loads(raw: str, field_name: str) -> Any:
@@ -126,17 +104,38 @@ def apply_field_mask(data: Any, fields: str | None) -> Any:
     if not isinstance(data, dict):
         return data
 
+    requested = [raw_field.strip() for raw_field in fields.split(",") if raw_field.strip()]
+    if not requested:
+        raise CutAgentError(
+            code="INVALID_ARGUMENT",
+            message="--fields must contain at least one field name",
+            recovery=["Use a comma-separated field mask such as --fields path,duration"],
+            context={"fields": fields},
+        )
+
     projected: dict[str, Any] = {}
-    for raw_field in fields.split(","):
-        field = raw_field.strip()
-        if not field:
-            continue
+    unknown_fields: list[str] = []
+    for field in requested:
         parts = [p for p in field.split(".") if p]
         if not parts:
+            unknown_fields.append(field)
             continue
         found, value = _extract_nested(data, parts)
         if found:
             _assign_nested(projected, parts, value)
+        else:
+            unknown_fields.append(field)
+    if unknown_fields:
+        available_fields = sorted(data)
+        raise CutAgentError(
+            code="INVALID_ARGUMENT",
+            message=f"Unknown field mask entries: {', '.join(unknown_fields)}",
+            recovery=[
+                f"Use available top-level fields: {', '.join(available_fields)}",
+                "Run 'cutagent schema analysis' to inspect response-shaping support",
+            ],
+            context={"unknown_fields": unknown_fields, "available_fields": available_fields},
+        )
     return projected
 
 
@@ -145,8 +144,5 @@ def to_ndjson(data: Any, list_key: str | None = None) -> str:
     if isinstance(data, list):
         return "\n".join(json.dumps(item, separators=(",", ":")) for item in data)
     if isinstance(data, dict) and list_key and isinstance(data.get(list_key), list):
-        return "\n".join(
-            json.dumps(item, separators=(",", ":"))
-            for item in data[list_key]
-        )
+        return "\n".join(json.dumps(item, separators=(",", ":")) for item in data[list_key])
     return json.dumps(data, separators=(",", ":"))

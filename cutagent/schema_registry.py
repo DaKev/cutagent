@@ -5,8 +5,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from cutagent import discovery_schema
 from cutagent.models import OPERATION_TYPES
-
 
 _COMMON_ENVELOPE_PROPERTIES: dict[str, Any] = {
     "inputs": {
@@ -23,6 +23,76 @@ _COMMON_ENVELOPE_PROPERTIES: dict[str, Any] = {
         "required": ["path"],
         "additionalProperties": False,
     },
+}
+
+_TEXT_ENTRY_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "text": {"type": "string"},
+        "position": {"type": "string"},
+        "font_size": {"type": "integer", "exclusiveMinimum": 0},
+        "font_color": {"type": "string"},
+        "start": {"type": "string"},
+        "end": {"type": "string"},
+        "bg_color": {"type": "string"},
+        "bg_padding": {"type": "integer", "minimum": 0},
+        "font": {"type": "string"},
+        "shadow_color": {"type": "string"},
+        "shadow_offset": {"type": "integer", "minimum": 0},
+        "stroke_color": {"type": "string"},
+        "stroke_width": {"type": "integer", "minimum": 0},
+    },
+    "required": ["text"],
+    "additionalProperties": False,
+}
+
+_ANIMATION_KEYFRAME_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "t": {"type": "number"},
+        "value": {"type": "number"},
+    },
+    "required": ["t", "value"],
+    "additionalProperties": False,
+}
+
+_ANIMATION_PROPERTY_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "keyframes": {"type": "array", "items": _ANIMATION_KEYFRAME_SCHEMA},
+        "easing": {
+            "type": "string",
+            "enum": ["linear", "ease-in", "ease-out", "ease-in-out", "spring"],
+        },
+    },
+    "required": ["keyframes"],
+    "additionalProperties": False,
+}
+
+_ANIMATION_LAYER_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "type": {"type": "string", "enum": ["text", "image"]},
+        "start": {"type": "number"},
+        "end": {"type": "number"},
+        "properties": {
+            "type": "object",
+            "additionalProperties": _ANIMATION_PROPERTY_SCHEMA,
+        },
+        "text": {"type": "string"},
+        "font_size": {"type": "integer", "exclusiveMinimum": 0},
+        "font_color": {"type": "string"},
+        "font": {"type": "string"},
+        "bg_color": {"type": "string"},
+        "bg_padding": {"type": "integer", "minimum": 0},
+        "shadow_color": {"type": "string"},
+        "shadow_offset": {"type": "integer", "minimum": 0},
+        "stroke_color": {"type": "string"},
+        "stroke_width": {"type": "integer", "minimum": 0},
+        "path": {"type": "string"},
+    },
+    "required": ["type", "properties"],
+    "additionalProperties": False,
 }
 
 
@@ -94,7 +164,7 @@ _OPERATION_CORE_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "object",
         "properties": {
             "source": {"type": "string"},
-            "factor": {"type": "number", "exclusiveMinimum": 0},
+            "factor": {"type": "number", "minimum": 0.25, "maximum": 100.0},
             "id": {"type": "string"},
         },
         "required": ["source", "factor"],
@@ -172,7 +242,7 @@ _OPERATION_CORE_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "object",
         "properties": {
             "source": {"type": "string"},
-            "entries": {"type": "array", "items": {"type": "object"}},
+            "entries": {"type": "array", "items": _TEXT_ENTRY_SCHEMA},
             "id": {"type": "string"},
         },
         "required": ["source", "entries"],
@@ -183,7 +253,7 @@ _OPERATION_CORE_SCHEMAS: dict[str, dict[str, Any]] = {
         "properties": {
             "source": {"type": "string"},
             "fps": {"type": "integer", "minimum": 1},
-            "layers": {"type": "array", "items": {"type": "object"}},
+            "layers": {"type": "array", "items": _ANIMATION_LAYER_SCHEMA},
             "id": {"type": "string"},
         },
         "required": ["source", "layers"],
@@ -202,70 +272,27 @@ def operation_payload_schema(op_name: str) -> dict[str, Any]:
     if op_name not in _OPERATION_CORE_SCHEMAS:
         raise ValueError(f"Unknown operation: {op_name}")
     schema = deepcopy(_OPERATION_CORE_SCHEMAS[op_name])
-    schema["properties"] = {
-        **_COMMON_ENVELOPE_PROPERTIES,
-        **schema["properties"],
-    }
+    schema["properties"] = {**_COMMON_ENVELOPE_PROPERTIES, **schema["properties"]}
     schema["required"] = list(schema["required"]) + ["output"]
     return schema
 
 
 def edl_schema() -> dict[str, Any]:
     """Return a machine-readable EDL schema summary."""
-    return {
-        "type": "object",
-        "properties": {
-            "version": {"type": "string", "enum": ["1.0"]},
-            "inputs": {"type": "array", "items": {"type": "string"}},
-            "operations": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {"op": {"type": "string", "enum": operation_names()}},
-                    "required": ["op"],
-                },
-            },
-            "output": _COMMON_ENVELOPE_PROPERTIES["output"],
-        },
-        "required": ["version", "inputs", "operations", "output"],
-        "additionalProperties": False,
-        "references": {
-            "$input.N": "Reference input file by index",
-            "$N": "Reference prior operation output by index",
-            "$name": "Reference prior operation output by operation id",
-            "$N.M": "Reference segment M from split operation N",
-        },
-    }
+    output_schema = deepcopy(_COMMON_ENVELOPE_PROPERTIES["output"])
+    return discovery_schema._edl_schema(operation_names(), output_schema)
 
 
 def cli_command_schema() -> dict[str, Any]:
     """Return schema metadata for agent-first top-level commands."""
-    return {
-        "commands": {
-            "capabilities": {"args": [], "output": "json"},
-            "schema": {
-                "args": ["target", "name?"],
-                "targets": ["index", "edl", "operation", "command", "capabilities"],
-                "output": "json",
-            },
-            "op": {
-                "args": ["name"],
-                "options": ["--json", "--params-file", "--dry-run", "--sanitize-output"],
-                "output": "json",
-            },
-            "validate": {"args": ["edl?"], "options": ["--edl-json"], "output": "json"},
-            "execute": {
-                "args": ["edl?"],
-                "options": ["--edl-json", "--dry-run", "--sanitize-output", "--quiet"],
-                "output": "json",
-            },
-        }
-    }
+    return discovery_schema._cli_command_schema()
+
+
+def analysis_command_schema() -> discovery_schema.AnalysisCommandSchema:
+    """Return typed metadata for analysis CLI output shaping."""
+    return discovery_schema._analysis_command_schema()
 
 
 def schema_index() -> dict[str, Any]:
     """Return an index of available schema targets."""
-    return {
-        "targets": ["index", "edl", "operation", "command", "capabilities"],
-        "operations": operation_names(),
-    }
+    return discovery_schema._schema_index(operation_names())

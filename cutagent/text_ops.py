@@ -5,7 +5,7 @@ from __future__ import annotations
 import functools
 import re
 import shutil
-import subprocess
+from subprocess import SubprocessError
 
 from cutagent.errors import (
     EMPTY_TEXT_ENTRIES,
@@ -15,7 +15,7 @@ from cutagent.errors import (
     CutAgentError,
     recovery_hints,
 )
-from cutagent.ffmpeg import run_ffmpeg
+from cutagent.ffmpeg import run_ffmpeg, run_process
 from cutagent.input_hardening import validate_resource_token, validate_safe_output_path
 from cutagent.models import TEXT_POSITIONS, OperationResult, TextEntry, parse_time
 from cutagent.probe import probe as probe_file
@@ -25,13 +25,13 @@ from cutagent.probe import probe as probe_file
 # ---------------------------------------------------------------------------
 
 _POSITION_MAP: dict[str, tuple[str, str]] = {
-    "center":        ("(w-text_w)/2", "(h-text_h)/2"),
-    "top-center":    ("(w-text_w)/2", "20"),
+    "center": ("(w-text_w)/2", "(h-text_h)/2"),
+    "top-center": ("(w-text_w)/2", "20"),
     "bottom-center": ("(w-text_w)/2", "h-text_h-20"),
-    "top-left":      ("20", "20"),
-    "top-right":     ("w-text_w-20", "20"),
-    "bottom-left":   ("20", "h-text_h-20"),
-    "bottom-right":  ("w-text_w-20", "h-text_h-20"),
+    "top-left": ("20", "20"),
+    "top-right": ("w-text_w-20", "20"),
+    "bottom-left": ("20", "h-text_h-20"),
+    "bottom-right": ("w-text_w-20", "h-text_h-20"),
 }
 
 _CUSTOM_POS_RE = re.compile(r"^(\d+)\s*,\s*(\d+)$")
@@ -46,12 +46,9 @@ def detect_system_font() -> str | None:
     if not fc_list:
         return None
     try:
-        result = subprocess.run(
-            [fc_list, "--format", "%{family}\n"],
-            capture_output=True, text=True, timeout=5,
-        )
+        result = run_process([fc_list, "--format", "%{family}\n"], 5)
         families = {line.strip() for line in result.stdout.splitlines() if line.strip()}
-    except (subprocess.SubprocessError, OSError):
+    except (SubprocessError, OSError):
         return None
     for font in _PREFERRED_FONTS:
         if font in families:
@@ -79,6 +76,7 @@ def _resolve_position(position: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Drawtext filter builder
 # ---------------------------------------------------------------------------
+
 
 def _escape_drawtext(text: str) -> str:
     """Escape special characters for FFmpeg drawtext filter value."""
@@ -142,6 +140,7 @@ def _build_drawtext_filter(entry: TextEntry) -> str:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def add_text(
     source: str,

@@ -10,9 +10,7 @@ from typing import Any, Optional
 # Time parsing helper
 # ---------------------------------------------------------------------------
 
-_TIME_RE = re.compile(
-    r"^(?:(\d+):)?(\d{1,2}):(\d{2})(?:\.(\d+))?$"
-)
+_TIME_RE = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{2})(?:\.(\d+))?$")
 
 
 def parse_time(value: str) -> float:
@@ -43,9 +41,11 @@ def format_time(seconds: float) -> str:
 # Probe result
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class StreamInfo:
     """Metadata for a single stream (audio or video)."""
+
     index: int
     codec_name: str
     codec_type: str  # "video" or "audio"
@@ -69,6 +69,7 @@ class StreamInfo:
 @dataclass
 class ProbeResult:
     """Full probe output for a media file."""
+
     path: str
     duration: float
     format_name: str
@@ -124,9 +125,11 @@ class ProbeResult:
 # Content intelligence models
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FrameResult:
     """A single extracted frame from a video."""
+
     timestamp: float
     path: str
     width: Optional[int] = None
@@ -149,6 +152,7 @@ class FrameResult:
 @dataclass
 class SceneInfo:
     """A contiguous scene interval with optional representative frames."""
+
     start: float
     end: float
     duration: float
@@ -185,6 +189,7 @@ class SceneInfo:
 @dataclass
 class SilenceInterval:
     """Detected silence interval in an audio track."""
+
     start: float
     end: float
     duration: float
@@ -204,6 +209,7 @@ class SilenceInterval:
 @dataclass
 class AudioLevel:
     """Audio level summary for a fixed timeline interval."""
+
     timestamp: float
     rms_db: float
     sample_count: int = 0
@@ -221,8 +227,76 @@ class AudioLevel:
 
 
 @dataclass
+class AudioLevelSection:
+    """A sustained timeline section with notably high or low loudness."""
+
+    start: float
+    end: float
+    average_rms_db: float
+    delta_from_average_db: float
+    classification: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the section to JSON-compatible data."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AudioLevelSection:
+        """Create a section from JSON-compatible data."""
+        return cls(
+            start=float(data["start"]),
+            end=float(data["end"]),
+            average_rms_db=float(data["average_rms_db"]),
+            delta_from_average_db=float(data["delta_from_average_db"]),
+            classification=str(data["classification"]),
+        )
+
+
+@dataclass
+class AudioLevelSummary:
+    """Compact loudness statistics for an audio-level timeline."""
+
+    minimum_rms_db: Optional[float]
+    maximum_rms_db: Optional[float]
+    average_rms_db: Optional[float]
+    notable_change_threshold_db: float
+    notable_sections: list[AudioLevelSection] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize summary statistics to JSON-compatible data."""
+        return {
+            "minimum_rms_db": self.minimum_rms_db,
+            "maximum_rms_db": self.maximum_rms_db,
+            "average_rms_db": self.average_rms_db,
+            "notable_change_threshold_db": self.notable_change_threshold_db,
+            "notable_sections": [section.to_dict() for section in self.notable_sections],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AudioLevelSummary:
+        """Create summary statistics from JSON-compatible data."""
+        return cls(
+            minimum_rms_db=(
+                float(data["minimum_rms_db"]) if data.get("minimum_rms_db") is not None else None
+            ),
+            maximum_rms_db=(
+                float(data["maximum_rms_db"]) if data.get("maximum_rms_db") is not None else None
+            ),
+            average_rms_db=(
+                float(data["average_rms_db"]) if data.get("average_rms_db") is not None else None
+            ),
+            notable_change_threshold_db=float(data["notable_change_threshold_db"]),
+            notable_sections=[
+                AudioLevelSection.from_dict(section)
+                for section in data.get("notable_sections", [])
+            ],
+        )
+
+
+@dataclass
 class BeatInfo:
     """A detected musical beat/onset in an audio track."""
+
     timestamp: float
     strength: float
 
@@ -240,6 +314,7 @@ class BeatInfo:
 @dataclass
 class VideoSummary:
     """Unified, agent-friendly map of content and suggested cut points."""
+
     path: str
     duration: float
     resolution: Optional[str]
@@ -279,6 +354,7 @@ class VideoSummary:
 # ---------------------------------------------------------------------------
 # Operation types
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class TrimOp:
@@ -424,6 +500,7 @@ class SpeedOp:
 @dataclass
 class CropOp:
     """Crop a rectangular region from a video."""
+
     source: str
     x: int
     y: int
@@ -453,6 +530,7 @@ class CropOp:
 @dataclass
 class ResizeOp:
     """Resize a video into a target canvas."""
+
     source: str
     width: int
     height: int
@@ -482,6 +560,7 @@ class ResizeOp:
 @dataclass
 class MixAudioOp:
     """Mix an external audio track into a video's existing audio."""
+
     source: str
     audio: str
     id: Optional[str] = None
@@ -507,6 +586,7 @@ class MixAudioOp:
 @dataclass
 class VolumeOp:
     """Adjust audio volume by a gain value in dB."""
+
     source: str
     id: Optional[str] = None
     gain_db: float = 0.0
@@ -530,6 +610,7 @@ class VolumeOp:
 @dataclass
 class ReplaceAudioOp:
     """Replace a video's audio track with an external audio file."""
+
     source: str
     audio: str
     id: Optional[str] = None
@@ -553,6 +634,7 @@ class ReplaceAudioOp:
 @dataclass
 class NormalizeOp:
     """Normalize audio loudness using EBU R128 loudnorm."""
+
     source: str
     id: Optional[str] = None
     target_lufs: float = -16.0
@@ -581,14 +663,20 @@ class NormalizeOp:
 
 # Valid position presets for text placement
 TEXT_POSITIONS = {
-    "center", "top-center", "bottom-center",
-    "top-left", "top-right", "bottom-left", "bottom-right",
+    "center",
+    "top-center",
+    "bottom-center",
+    "top-left",
+    "top-right",
+    "bottom-left",
+    "bottom-right",
 }
 
 
 @dataclass
 class TextEntry:
     """A single text overlay entry with position, timing, and styling."""
+
     text: str
     position: str = "center"
     font_size: int = 48
@@ -609,12 +697,19 @@ class TextEntry:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TextEntry:
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        # Index the required field so parse_operation can translate KeyError at
+        # the model boundary without importing the structured error layer here.
+        text = data["text"]
+        optional = {
+            k: v for k, v in data.items() if k != "text" and k in cls.__dataclass_fields__
+        }
+        return cls(text=text, **optional)
 
 
 @dataclass
 class TextOp:
     """Burn one or more text overlays onto a video."""
+
     source: str
     id: Optional[str] = None
     entries: list[TextEntry] = field(default_factory=list)
@@ -649,6 +744,7 @@ IMAGE_ANIMATABLE_PROPS = {"x", "y", "opacity", "scale"}
 @dataclass
 class AnimationKeyframe:
     """A single keyframe: time + value."""
+
     t: float
     value: float
 
@@ -663,6 +759,7 @@ class AnimationKeyframe:
 @dataclass
 class AnimationProperty:
     """An animated property with keyframes and easing."""
+
     keyframes: list[AnimationKeyframe]
     easing: str = "linear"
 
@@ -681,6 +778,7 @@ class AnimationProperty:
 @dataclass
 class AnimationLayer:
     """A single animation layer (text or image) with animated properties."""
+
     type: str  # "text" or "image"
     start: float = 0.0
     end: float = 5.0
@@ -727,10 +825,7 @@ class AnimationLayer:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AnimationLayer:
-        props = {
-            k: AnimationProperty.from_dict(v)
-            for k, v in data.get("properties", {}).items()
-        }
+        props = {k: AnimationProperty.from_dict(v) for k, v in data.get("properties", {}).items()}
         return cls(
             type=data["type"],
             start=float(data.get("start", 0.0)),
@@ -753,6 +848,7 @@ class AnimationLayer:
 @dataclass
 class AnimateOp:
     """Apply keyframe-driven animations (text/image layers) onto a video."""
+
     source: str
     id: Optional[str] = None
     layers: list[AnimationLayer] = field(default_factory=list)
@@ -835,6 +931,7 @@ def parse_operation(data: dict[str, Any]) -> Any:
 # EDL (Edit Decision List)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class OutputSpec:
     path: str
@@ -851,6 +948,7 @@ class OutputSpec:
 @dataclass
 class EDL:
     """Edit Decision List — the top-level declarative edit format."""
+
     version: str
     inputs: list[str]
     operations: list[Any]  # list of typed operation dataclasses
@@ -879,13 +977,16 @@ class EDL:
 # Operation result
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class OperationResult:
     """Result of a single operation or full EDL execution."""
+
     success: bool
     output_path: str
     duration_seconds: Optional[float] = None
     warnings: list[str] = field(default_factory=list)
+    split_segments: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
