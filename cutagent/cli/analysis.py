@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 
-from cutagent.cli.utils import json_error, json_out, json_out_shaped
+from cutagent.cli.utils import JsonTyperCommand, json_error, json_out, json_out_shaped
 from cutagent.errors import EXIT_VALIDATION, CutAgentError
+from cutagent.input_hardening import apply_field_mask
 
 app = typer.Typer(help="Analysis and probing commands")
 
@@ -30,7 +31,30 @@ def _normalize_limit(limit: int | None) -> int | None:
         )
     return limit
 
-@app.command("probe")
+
+def _summary_ndjson_records(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flatten a summary envelope into typed NDJSON records."""
+    list_types = {
+        "scenes": "scene",
+        "silences": "silence",
+        "audio_levels": "audio_level",
+        "silence_points": "silence_point",
+        "suggested_cut_points": "suggested_cut_point",
+    }
+    metadata = {key: value for key, value in summary.items() if key not in list_types}
+    records: list[dict[str, Any]] = []
+    if metadata:
+        records.append({"type": "summary", **metadata})
+    for key, record_type in list_types.items():
+        for value in summary.get(key, []):
+            if isinstance(value, dict):
+                records.append({"type": record_type, **value})
+            else:
+                records.append({"type": record_type, "timestamp": value})
+    return records
+
+
+@app.command("probe", cls=JsonTyperCommand)
 def cmd_probe(
     file: str,
     fields: Optional[str] = typer.Option(None, "--fields", help="Comma-separated field mask"),
@@ -38,6 +62,7 @@ def cmd_probe(
 ) -> int:
     """Probe a media file for metadata."""
     from cutagent.probe import probe
+
     try:
         result = probe(file)
         return json_out_shaped(
@@ -48,7 +73,8 @@ def cmd_probe(
     except CutAgentError as exc:
         return json_error(exc)
 
-@app.command("keyframes")
+
+@app.command("keyframes", cls=JsonTyperCommand)
 def cmd_keyframes(
     file: str,
     limit: Optional[int] = typer.Option(None, "--limit", help="Limit number of returned keyframes"),
@@ -57,6 +83,7 @@ def cmd_keyframes(
 ) -> int:
     """List keyframe timestamps."""
     from cutagent.probe import keyframes
+
     try:
         cap = _normalize_limit(limit)
         all_keyframes = keyframes(file)
@@ -65,8 +92,7 @@ def cmd_keyframes(
         avg_interval = None
         if len(all_keyframes) > 1:
             intervals = [
-                all_keyframes[i + 1] - all_keyframes[i]
-                for i in range(len(all_keyframes) - 1)
+                all_keyframes[i + 1] - all_keyframes[i] for i in range(len(all_keyframes) - 1)
             ]
             avg_interval = round(sum(intervals) / len(intervals), 3)
 
@@ -86,33 +112,45 @@ def cmd_keyframes(
     except CutAgentError as exc:
         return json_error(exc)
 
-@app.command("scenes")
+
+@app.command("scenes", cls=JsonTyperCommand)
 def cmd_scenes(
     file: str,
     threshold: float = typer.Option(0.3, help="Scene detection threshold (0.0–1.0)"),
-    output_dir: Optional[str] = typer.Option(None, help="Optional output directory for scene preview frames"),
+    output_dir: Optional[str] = typer.Option(
+        None, help="Optional output directory for scene preview frames"
+    ),
     fields: Optional[str] = typer.Option(None, "--fields", help="Comma-separated field mask"),
     response_format: str = typer.Option("json", "--response-format", help="json or ndjson"),
 ) -> int:
     """Detect scene boundaries."""
     from cutagent.probe import detect_scenes
+
     try:
         scenes = detect_scenes(
             file,
             threshold=threshold,
             frame_output_dir=output_dir,
         )
-        return json_out_shaped({
-            "path": file,
-            "scenes": [scene.to_dict() for scene in scenes],
-            "count": len(scenes),
-            "threshold": threshold,
-            "output_dir": output_dir,
-        }, fields=fields, response_format=_normalize_response_format(response_format), ndjson_key="scenes")
+        return json_out_shaped(
+            {
+                "path": file,
+                "scenes": [scene.to_dict() for scene in scenes],
+                "count": len(scenes),
+                "threshold": threshold,
+                "output_dir": output_dir,
+            },
+            fields=fields,
+            response_format=_normalize_response_format(response_format),
+            ndjson_key="scenes",
+        )
     except CutAgentError as exc:
         return json_error(exc)
 
-def _compute_timestamps(file: str, at: str | None, count: int | None, interval: float | None) -> list[float]:
+
+def _compute_timestamps(
+    file: str, at: str | None, count: int | None, interval: float | None
+) -> list[float]:
     """Compute frame timestamps from --at, --count, or --interval."""
     from cutagent.models import parse_time
     from cutagent.probe import probe
@@ -149,7 +187,8 @@ def _compute_timestamps(file: str, at: str | None, count: int | None, interval: 
 
     raise ValueError("Provide --at, --count, or --interval")
 
-@app.command("frames")
+
+@app.command("frames", cls=JsonTyperCommand)
 def cmd_frames(
     file: str,
     output_dir: str = typer.Option(..., "--output-dir", help="Directory for extracted frames"),
@@ -162,6 +201,7 @@ def cmd_frames(
 ) -> int:
     """Extract still frames at specific timestamps."""
     from cutagent.probe import extract_frames
+
     try:
         timestamps = _compute_timestamps(file, at, count, interval)
         frames = extract_frames(
@@ -170,54 +210,77 @@ def cmd_frames(
             output_dir=output_dir,
             image_format=format,
         )
-        return json_out_shaped({
-            "path": file,
-            "frames": [frame.to_dict() for frame in frames],
-            "count": len(frames),
-        }, fields=fields, response_format=_normalize_response_format(response_format), ndjson_key="frames")
+        return json_out_shaped(
+            {
+                "path": file,
+                "frames": [frame.to_dict() for frame in frames],
+                "count": len(frames),
+            },
+            fields=fields,
+            response_format=_normalize_response_format(response_format),
+            ndjson_key="frames",
+        )
     except CutAgentError as exc:
         return json_error(exc)
     except ValueError as exc:
-        return json_out({
-            "error": True,
-            "code": "INVALID_ARGUMENT",
-            "message": str(exc),
-            "recovery": ["Provide --at timestamps, --count N, or --interval seconds"],
-        }, EXIT_VALIDATION)
+        return json_out(
+            {
+                "error": True,
+                "code": "INVALID_ARGUMENT",
+                "message": str(exc),
+                "recovery": ["Provide --at timestamps, --count N, or --interval seconds"],
+            },
+            EXIT_VALIDATION,
+        )
 
-@app.command("thumbnail")
+
+@app.command("thumbnail", cls=JsonTyperCommand)
 def cmd_thumbnail(
     file: str,
     at: str = typer.Option(..., "--time", "--at", help="Thumbnail timestamp"),
     output: str = typer.Option(..., "-o", "--output", help="Output image path"),
+    fields: Optional[str] = typer.Option(None, "--fields", help="Comma-separated field mask"),
+    response_format: str = typer.Option("json", "--response-format", help="json or ndjson"),
 ) -> int:
     """Extract a single thumbnail frame."""
     from cutagent.models import parse_time
     from cutagent.probe import thumbnail
+
     try:
         frame = thumbnail(file, timestamp=parse_time(at), output=output)
-        return json_out({"path": file, "thumbnail": frame.to_dict()})
+        return json_out_shaped(
+            {"path": file, "thumbnail": frame.to_dict()},
+            fields=fields,
+            response_format=_normalize_response_format(response_format),
+        )
     except CutAgentError as exc:
         return json_error(exc)
     except ValueError as exc:
-        return json_out({
-            "error": True,
-            "code": "INVALID_ARGUMENT",
-            "message": str(exc),
-            "recovery": ["Use a valid timestamp in --at"],
-        }, EXIT_VALIDATION)
+        return json_out(
+            {
+                "error": True,
+                "code": "INVALID_ARGUMENT",
+                "message": str(exc),
+                "recovery": ["Use a valid timestamp in --at"],
+            },
+            EXIT_VALIDATION,
+        )
 
-@app.command("silence")
+
+@app.command("silence", cls=JsonTyperCommand)
 def cmd_silence(
     file: str,
     threshold: float = typer.Option(-30.0, help="Silence threshold in dB"),
     min_duration: float = typer.Option(0.5, help="Minimum silence duration in seconds"),
-    limit: Optional[int] = typer.Option(None, "--limit", help="Limit number of returned silence intervals"),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", help="Limit number of returned silence intervals"
+    ),
     fields: Optional[str] = typer.Option(None, "--fields", help="Comma-separated field mask"),
     response_format: str = typer.Option("json", "--response-format", help="json or ndjson"),
 ) -> int:
     """Detect silence intervals."""
     from cutagent.probe import detect_silence
+
     try:
         cap = _normalize_limit(limit)
         intervals = detect_silence(
@@ -244,47 +307,72 @@ def cmd_silence(
     except CutAgentError as exc:
         return json_error(exc)
 
-@app.command("audio-levels")
+
+@app.command("audio-levels", cls=JsonTyperCommand)
 def cmd_audio_levels(
     file: str,
     interval: float = typer.Option(1.0, help="Aggregation interval in seconds"),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", help="Limit number of returned audio-level samples"
+    ),
     fields: Optional[str] = typer.Option(None, "--fields", help="Comma-separated field mask"),
     response_format: str = typer.Option("json", "--response-format", help="json or ndjson"),
 ) -> int:
     """Compute audio levels over time."""
-    from cutagent.probe import audio_levels
+    from cutagent.probe import audio_levels, summarize_audio_levels
+
     try:
+        cap = _normalize_limit(limit)
         levels = audio_levels(file, interval=interval)
-        return json_out_shaped({
-            "path": file,
-            "interval": interval,
-            "audio_levels": [level.to_dict() for level in levels],
-            "count": len(levels),
-        }, fields=fields, response_format=_normalize_response_format(response_format), ndjson_key="audio_levels")
+        summary = summarize_audio_levels(levels)
+        selected = levels[:cap] if cap is not None else levels
+        return json_out_shaped(
+            {
+                "path": file,
+                "interval": interval,
+                "audio_levels": [level.to_dict() for level in selected],
+                "count": len(selected),
+                "total_count": len(levels),
+                "truncated": len(selected) < len(levels),
+                "summary": summary.to_dict(),
+            },
+            fields=fields,
+            response_format=_normalize_response_format(response_format),
+            ndjson_key="audio_levels",
+        )
     except CutAgentError as exc:
         return json_error(exc)
     except ValueError as exc:
-        return json_out({
-            "error": True,
-            "code": "INVALID_ARGUMENT",
-            "message": str(exc),
-            "recovery": ["Use --interval > 0"],
-        }, EXIT_VALIDATION)
+        return json_out(
+            {
+                "error": True,
+                "code": "INVALID_ARGUMENT",
+                "message": str(exc),
+                "recovery": ["Use --interval > 0"],
+            },
+            EXIT_VALIDATION,
+        )
 
-@app.command("summarize")
+
+@app.command("summarize", cls=JsonTyperCommand)
 def cmd_summarize(
     file: str,
-    frame_dir: Optional[str] = typer.Option(None, help="Optional directory to write scene frame previews"),
+    frame_dir: Optional[str] = typer.Option(
+        None, help="Optional directory to write scene frame previews"
+    ),
     scene_threshold: float = typer.Option(0.3, help="Scene detection threshold"),
     silence_threshold: float = typer.Option(-30.0, help="Silence threshold in dB"),
     min_silence_duration: float = typer.Option(0.5, help="Minimum silence duration"),
     audio_interval: float = typer.Option(1.0, help="Audio level interval in seconds"),
-    include_audio_levels: bool = typer.Option(False, help="Include per-second audio levels in output (verbose)"),
+    include_audio_levels: bool = typer.Option(
+        False, help="Include per-second audio levels in output (verbose)"
+    ),
     fields: Optional[str] = typer.Option(None, "--fields", help="Comma-separated field mask"),
     response_format: str = typer.Option("json", "--response-format", help="json or ndjson"),
 ) -> int:
     """Generate a unified content map."""
     from cutagent.probe import summarize
+
     try:
         result = summarize(
             file,
@@ -295,19 +383,27 @@ def cmd_summarize(
             audio_interval=audio_interval,
             include_audio_levels=include_audio_levels,
         )
-        return json_out_shaped(
-            {"summary": result.to_dict()},
-            fields=fields,
-            response_format=_normalize_response_format(response_format),
-        )
+        response = {"summary": result.to_dict()}
+        normalized_format = _normalize_response_format(response_format)
+        if normalized_format == "ndjson":
+            projected = apply_field_mask(response, fields)
+            summary_data = projected.get("summary", {})
+            return json_out_shaped(
+                _summary_ndjson_records(summary_data),
+                response_format="ndjson",
+            )
+        return json_out_shaped(response, fields=fields)
     except CutAgentError as exc:
         return json_error(exc)
 
-@app.command("beats")
+
+@app.command("beats", cls=JsonTyperCommand)
 def cmd_beats(
     file: str,
     min_interval: float = typer.Option(0.15, help="Minimum seconds between beats (default: 0.15)"),
-    energy_threshold: float = typer.Option(1.4, help="Energy spike threshold multiplier (default: 1.4)"),
+    energy_threshold: float = typer.Option(
+        1.4, help="Energy spike threshold multiplier (default: 1.4)"
+    ),
     min_strength: float = typer.Option(
         0.0,
         "--min-strength",
@@ -319,6 +415,7 @@ def cmd_beats(
 ) -> int:
     """Detect musical beats/onsets in audio."""
     from cutagent.probe import detect_beats
+
     try:
         cap = _normalize_limit(limit)
         if min_strength < 0.0 or min_strength > 3.0:

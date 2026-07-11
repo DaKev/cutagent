@@ -130,9 +130,11 @@ def exit_code_for_error(code: str) -> int:
 # CutAgentError exception
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CutAgentError(Exception):
     """Structured error with code, message, recovery hints, and context."""
+
     code: str
     message: str
     recovery: list[str] = field(default_factory=list)
@@ -155,6 +157,7 @@ class CutAgentError(Exception):
 # Recovery hint factory
 # ---------------------------------------------------------------------------
 
+
 def _ffmpeg_install_hints() -> list[str]:
     """Return platform-specific FFmpeg install instructions."""
     hints = ["pip install 'cutagent[ffmpeg]'  # bundles ffmpeg+ffprobe automatically"]
@@ -164,11 +167,13 @@ def _ffmpeg_install_hints() -> list[str]:
         hints.append("winget install ffmpeg  OR  choco install ffmpeg")
     else:
         hints.append("sudo apt install ffmpeg  (Debian/Ubuntu)")
-    hints.extend([
-        "Or download from https://ffmpeg.org/download.html",
-        "Set CUTAGENT_FFMPEG=/path/to/ffmpeg to override discovery",
-        "Run 'cutagent doctor' to diagnose setup issues",
-    ])
+    hints.extend(
+        [
+            "Or download from https://ffmpeg.org/download.html",
+            "Set CUTAGENT_FFMPEG=/path/to/ffmpeg to override discovery",
+            "Run 'cutagent doctor' to diagnose setup issues",
+        ]
+    )
     return hints
 
 
@@ -203,7 +208,6 @@ _RECOVERY_MAP: dict[str, list[str]] = {
         "Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds",
     ],
     UNKNOWN_OPERATION: [
-        "Use one of: trim, split, concat, reorder, extract, fade, speed, mix_audio, volume, replace_audio, normalize, text, animate",
         "Run 'cutagent capabilities' to see all supported operations",
     ],
     INVALID_MIX_LEVEL: [
@@ -225,7 +229,7 @@ _RECOVERY_MAP: dict[str, list[str]] = {
         "Each entry needs at minimum a 'text' field",
     ],
     INVALID_TEXT_POSITION: [
-        "Use a preset: center, top-center, bottom-center, top-left, top-right, bottom-left, bottom-right",
+        "Use a documented preset from 'cutagent capabilities'",
         "Or use custom coordinates as 'x,y' (e.g. '100,200')",
     ],
     INVALID_FONT_SIZE: [

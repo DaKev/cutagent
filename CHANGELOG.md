@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-11
+
+### Added
+
+- Machine-readable JSON help for the root CLI and every subcommand
+- Typed analysis discovery schemas and dedicated payload-validation module
+- Audio-level summaries with minimum, maximum, average, and notable loudness changes
+- Output limits and truncation metadata for audio-level analysis
+- Typed NDJSON records for unified `summarize` output
+- Field projection and NDJSON support for `thumbnail`
+
+### Changed
+
+- Analysis commands now expose consistent field projection, NDJSON, limits, and filtering metadata
+- Invalid field masks fail with structured recovery guidance instead of silently returning empty data
+- Payload schema and semantic validation now live outside the CLI composition layer
+- Capability discovery documents the complete four-phase professional editing workflow
+
+### Fixed
+
+- Restored structured `cutagent --version` output
+- Restored and regression-tested the exit-code, EDL-version, doctor-version, and structured
+  option-error behavior previously documented for 0.4.0 but incomplete in the shipped runtime
+- Hardened crop, resize, audio, text, animation, and split-segment validation
+- Preserved valid filesystem paths containing `%`, `#`, `?`, or parent-relative components
+
 ## [0.5.0] - 2026-03-17
 
 ### Added

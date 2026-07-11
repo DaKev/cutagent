@@ -14,6 +14,7 @@ from cutagent.engine import (
     parse_edl,
 )
 from cutagent.errors import CutAgentError
+from cutagent.input_hardening import validate_resource_token, validate_safe_output_path
 from cutagent.models import (
     ANIMATION_EASINGS,
     ANIMATION_LAYER_TYPES,
@@ -39,7 +40,6 @@ from cutagent.models import (
     parse_time,
 )
 from cutagent.probe import probe
-from cutagent.input_hardening import validate_resource_token, validate_safe_output_path
 
 _CUSTOM_POS_RE = re.compile(r"^\d+\s*,\s*\d+$")
 
@@ -54,17 +54,25 @@ def _get_ffmpeg_filters() -> set[str]:
     if _ffmpeg_available_filters is not None:
         return _ffmpeg_available_filters
     try:
-        import subprocess
+        from cutagent.ffmpeg import find_ffmpeg, run_process
 
-        from cutagent.ffmpeg import find_ffmpeg
-        result = subprocess.run(
-            [find_ffmpeg(), "-filters"],
-            capture_output=True, text=True, timeout=10,
-        )
+        result = run_process([find_ffmpeg(), "-filters"], 10)
         filters: set[str] = set()
         for line in result.stdout.splitlines():
             parts = line.split()
-            if len(parts) >= 2 and parts[0] in ("T->T", "...", "T..", ".T.", "..C", "TSC", "TS.", "T.C", ".SC", ".T.", "T.C"):
+            if len(parts) >= 2 and parts[0] in (
+                "T->T",
+                "...",
+                "T..",
+                ".T.",
+                "..C",
+                "TSC",
+                "TS.",
+                "T.C",
+                ".SC",
+                ".T.",
+                "T.C",
+            ):
                 filters.add(parts[1])
             elif len(parts) >= 3 and len(parts[0]) == 3:
                 filters.add(parts[1])
@@ -75,7 +83,9 @@ def _get_ffmpeg_filters() -> set[str]:
 
 
 def _check_required_filter(
-    filter_name: str, result: ValidationResult, op_idx: int,
+    filter_name: str,
+    result: ValidationResult,
+    op_idx: int,
 ) -> None:
     """Emit a warning if a required ffmpeg filter is not available."""
     filters = _get_ffmpeg_filters()
@@ -98,6 +108,7 @@ def _check_required_filter(
 # ---------------------------------------------------------------------------
 # Validation result
 # ---------------------------------------------------------------------------
+
 
 class ValidationResult:
     """Collects errors and warnings from a dry-run validation."""
@@ -133,28 +144,49 @@ class ValidationResult:
 # Duration resolution helper
 # ---------------------------------------------------------------------------
 
+
 def _resolve_source_duration(
     source: str,
     file_durations: dict[str, float],
     op_durations: dict[int, Optional[float]],
     inputs: list[str],
+    named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
     """Look up the estimated duration of a source — input ref, op ref, or file path."""
     if _is_input_reference(source):
-        idx = int(source[len(_INPUT_REF_PREFIX):])
+        idx = int(source[len(_INPUT_REF_PREFIX) :])
         if 0 <= idx < len(inputs):
             return file_durations.get(inputs[idx])
         return None
     if _is_reference(source):
-        ref_idx = int(source[1:])
+        ref_idx, segment_idx = _parse_operation_reference(source)
+        if segment_idx is not None:
+            segments = (split_segment_durations or {}).get(ref_idx)
+            if segments is None or segment_idx < 0 or segment_idx >= len(segments):
+                return None
+            return segments[segment_idx]
         return op_durations.get(ref_idx)
+    if _is_named_reference(source):
+        op_idx = (named_ops or {}).get(source[1:])
+        if op_idx is not None:
+            return op_durations.get(op_idx)
     return file_durations.get(source)
+
+
+def _parse_operation_reference(source: str) -> tuple[int, int | None]:
+    """Parse '$N' or '$N.M' into operation and optional split-segment indices."""
+    rest = source[1:]
+    if "." not in rest:
+        return int(rest), None
+    op_idx, segment_idx = rest.split(".", 1)
+    return int(op_idx), int(segment_idx)
 
 
 def _resolve_seg_to_input(source: str, inputs: list[str]) -> str | None:
     """Resolve a segment reference to an input file path (for metadata lookup)."""
     if _is_input_reference(source):
-        idx = int(source[len(_INPUT_REF_PREFIX):])
+        idx = int(source[len(_INPUT_REF_PREFIX) :])
         if 0 <= idx < len(inputs):
             return inputs[idx]
     elif not _is_reference(source) and not _is_named_reference(source):
@@ -165,6 +197,7 @@ def _resolve_seg_to_input(source: str, inputs: list[str]) -> str | None:
 # ---------------------------------------------------------------------------
 # Validators
 # ---------------------------------------------------------------------------
+
 
 def validate_edl(raw: str | dict[str, Any]) -> ValidationResult:
     """Validate an EDL without executing it.
@@ -204,7 +237,9 @@ def validate_edl(raw: str | dict[str, Any]) -> ValidationResult:
             result.add_error(exc.code, exc.message, **exc.context)
             continue
         if not Path(input_path).exists():
-            result.add_error("INPUT_NOT_FOUND", f"Input file not found: {input_path}", path=input_path)
+            result.add_error(
+                "INPUT_NOT_FOUND", f"Input file not found: {input_path}", path=input_path
+            )
         else:
             try:
                 info = probe(input_path)
@@ -216,6 +251,7 @@ def validate_edl(raw: str | dict[str, Any]) -> ValidationResult:
     # Track which operation indices have been produced and their estimated durations
     produced: set[int] = set()
     op_durations: dict[int, Optional[float]] = {}
+    split_segment_durations: dict[int, list[Optional[float]]] = {}
     named_ops: dict[str, int] = {}
     input_count = len(edl.inputs)
 
@@ -230,8 +266,17 @@ def validate_edl(raw: str | dict[str, Any]) -> ValidationResult:
             named_ops[op_id] = idx
 
         est = _validate_operation(
-            op, idx, produced, file_durations, result, input_count,
-            op_durations, edl.inputs, named_ops, file_resolutions,
+            op,
+            idx,
+            produced,
+            file_durations,
+            result,
+            input_count,
+            op_durations,
+            edl.inputs,
+            named_ops,
+            file_resolutions,
+            split_segment_durations,
         )
         op_durations[idx] = est
         produced.add(idx)
@@ -270,43 +315,212 @@ def _validate_operation(
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
     file_resolutions: dict[str, tuple[int | None, int | None]] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
     """Validate a single operation. Returns estimated duration or None."""
     _op_dur = op_durations or {}
     _inputs = inputs or []
     _named = named_ops or {}
     _res = file_resolutions or {}
+    _split_dur = split_segment_durations if split_segment_durations is not None else {}
 
     if isinstance(op, TrimOp):
-        return _validate_trim(op, idx, produced, file_durations, result, input_count, _named)
+        return _validate_trim(
+            op,
+            idx,
+            produced,
+            file_durations,
+            result,
+            input_count,
+            _op_dur,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, SplitOp):
-        return _validate_split(op, idx, produced, file_durations, result, input_count, _named)
+        return _validate_split(
+            op,
+            idx,
+            produced,
+            file_durations,
+            result,
+            input_count,
+            _op_dur,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, ConcatOp):
-        return _validate_concat(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named, _res)
+        return _validate_concat(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _res,
+            _split_dur,
+        )
     elif isinstance(op, ReorderOp):
-        return _validate_reorder(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_reorder(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, ExtractOp):
-        return _validate_extract(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_extract(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, FadeOp):
-        return _validate_fade(op, idx, produced, file_durations, result, input_count, _op_dur, _inputs, _named)
+        return _validate_fade(
+            op,
+            idx,
+            produced,
+            file_durations,
+            result,
+            input_count,
+            _op_dur,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, SpeedOp):
-        return _validate_speed(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_speed(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, CropOp):
-        return _validate_crop(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named, _res)
+        return _validate_crop(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _res,
+            _split_dur,
+        )
     elif isinstance(op, ResizeOp):
-        return _validate_resize(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_resize(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, MixAudioOp):
-        return _validate_mix_audio(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_mix_audio(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, VolumeOp):
-        return _validate_volume(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_volume(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, ReplaceAudioOp):
-        return _validate_replace_audio(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_replace_audio(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, NormalizeOp):
-        return _validate_normalize(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_normalize(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, TextOp):
-        return _validate_text(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_text(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     elif isinstance(op, AnimateOp):
-        return _validate_animate(op, idx, produced, result, input_count, _op_dur, file_durations, _inputs, _named)
+        return _validate_animate(
+            op,
+            idx,
+            produced,
+            result,
+            input_count,
+            _op_dur,
+            file_durations,
+            _inputs,
+            _named,
+            _split_dur,
+        )
     else:
         result.add_error(
             "UNKNOWN_OPERATION",
@@ -321,6 +535,7 @@ def _validate_source(
     result: ValidationResult,
     input_count: int = 0,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> None:
     """Check that a source is a valid $input.N, $name, $N reference, or file path."""
     try:
@@ -330,7 +545,7 @@ def _validate_source(
         return
 
     if _is_input_reference(source):
-        idx = int(source[len("$input."):])
+        idx = int(source[len("$input.") :])
         if idx < 0 or idx >= input_count:
             result.add_error(
                 "INVALID_REFERENCE",
@@ -338,13 +553,31 @@ def _validate_source(
                 reference=source,
             )
     elif _is_reference(source):
-        ref_idx = int(source[1:])
+        ref_idx, segment_idx = _parse_operation_reference(source)
         if ref_idx not in produced:
             result.add_error(
                 "INVALID_REFERENCE",
                 f"Reference {source} points to operation {ref_idx} which hasn't been produced yet",
                 reference=source,
             )
+            return
+        if segment_idx is not None:
+            segments = (split_segment_durations or {}).get(ref_idx)
+            if segments is None:
+                result.add_error(
+                    "INVALID_REFERENCE",
+                    f"Reference {source} points to a segment of operation {ref_idx}, "
+                    "but that operation does not produce addressable segments",
+                    reference=source,
+                )
+            elif segment_idx < 0 or segment_idx >= len(segments):
+                result.add_error(
+                    "INVALID_REFERENCE",
+                    f"Reference {source} points to segment {segment_idx}, but operation "
+                    f"{ref_idx} only has {len(segments)} segments",
+                    reference=source,
+                    segments_count=len(segments),
+                )
     elif _is_named_reference(source):
         name = source[1:]
         _named = named_ops or {}
@@ -357,7 +590,8 @@ def _validate_source(
         elif _named[name] not in produced:
             result.add_error(
                 "INVALID_REFERENCE",
-                f"Named reference {source} points to op {_named[name]} which hasn't been produced yet",
+                f"Named reference {source} points to op {_named[name]} "
+                "which hasn't been produced yet",
                 reference=source,
             )
     elif not Path(source).exists():
@@ -365,11 +599,18 @@ def _validate_source(
 
 
 def _validate_trim(
-    op: TrimOp, idx: int, produced: set[int], durations: dict[str, float],
-    result: ValidationResult, input_count: int = 0,
+    op: TrimOp,
+    idx: int,
+    produced: set[int],
+    durations: dict[str, float],
+    result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
 
     try:
         start_sec = parse_time(op.start)
@@ -385,7 +626,14 @@ def _validate_trim(
     if start_sec >= end_sec:
         result.add_error("TRIM_START_AFTER_END", f"Op {idx}: start ({op.start}) >= end ({op.end})")
 
-    dur = durations.get(op.source)
+    dur = _resolve_source_duration(
+        op.source,
+        durations,
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
+    )
     if dur is not None and end_sec > dur:
         if end_sec - dur <= _TRIM_BOUNDARY_TOLERANCE:
             result.add_warning(
@@ -403,44 +651,76 @@ def _validate_trim(
 
 
 def _validate_split(
-    op: SplitOp, idx: int, produced: set[int], durations: dict[str, float],
-    result: ValidationResult, input_count: int = 0,
+    op: SplitOp,
+    idx: int,
+    produced: set[int],
+    durations: dict[str, float],
+    result: ValidationResult,
+    input_count: int = 0,
+    op_durations: dict[int, Optional[float]] | None = None,
+    inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
-    dur = durations.get(op.source)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
+    dur = _resolve_source_duration(
+        op.source,
+        durations,
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
+    )
+    point_secs: list[float] = []
+    points_in_range = True
     for pt in op.points:
         try:
             pt_sec = parse_time(pt)
         except ValueError:
             result.add_error("INVALID_TIME_FORMAT", f"Op {idx}: invalid split point: {pt}")
+            points_in_range = False
             continue
+        point_secs.append(pt_sec)
         if dur is not None and pt_sec > dur:
             result.add_error(
                 "SPLIT_POINT_BEYOND_DURATION",
                 f"Op {idx}: split point {pt} ({pt_sec:.3f}s) > duration ({dur:.3f}s)",
             )
+            points_in_range = False
+
+    if split_segment_durations is not None and len(point_secs) == len(op.points):
+        sorted_points = sorted(point_secs)
+        if dur is not None and points_in_range:
+            boundaries = [0.0] + sorted_points + [dur]
+            split_segment_durations[idx] = [
+                boundaries[i + 1] - boundaries[i] for i in range(len(boundaries) - 1)
+            ]
+        else:
+            split_segment_durations[idx] = [None for _ in range(len(sorted_points) + 1)]
+
     # Split produces the first segment — estimate as start to first point
-    if op.points:
-        try:
-            first_pt = parse_time(op.points[0])
-            return first_pt
-        except ValueError:
-            pass
+    if split_segment_durations is not None and idx in split_segment_durations:
+        return split_segment_durations[idx][0]
+    if point_secs:
+        return sorted(point_secs)[0]
     return None
 
 
 def _validate_concat(
-    op: ConcatOp, idx: int, produced: set[int], result: ValidationResult,
+    op: ConcatOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
     file_resolutions: dict[str, tuple[int | None, int | None]] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
     for seg in op.segments:
-        _validate_source(seg, produced, result, input_count, named_ops)
+        _validate_source(seg, produced, result, input_count, named_ops, split_segment_durations)
     if op.transition is not None and op.transition != "crossfade":
         result.add_error(
             "INVALID_TRANSITION",
@@ -477,7 +757,9 @@ def _validate_concat(
     total = 0.0
     all_known = True
     for seg in op.segments:
-        seg_dur = _resolve_source_duration(seg, _file_dur, _op_dur, _inputs)
+        seg_dur = _resolve_source_duration(
+            seg, _file_dur, _op_dur, _inputs, named_ops, split_segment_durations
+        )
         if seg_dur is not None:
             total += seg_dur
         else:
@@ -489,15 +771,19 @@ def _validate_concat(
 
 
 def _validate_reorder(
-    op: ReorderOp, idx: int, produced: set[int], result: ValidationResult,
+    op: ReorderOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
     for seg in op.segments:
-        _validate_source(seg, produced, result, input_count, named_ops)
+        _validate_source(seg, produced, result, input_count, named_ops, split_segment_durations)
     for i in op.order:
         if i < 0 or i >= len(op.segments):
             result.add_error(
@@ -513,7 +799,14 @@ def _validate_reorder(
     all_known = True
     for i in op.order:
         if 0 <= i < len(op.segments):
-            seg_dur = _resolve_source_duration(op.segments[i], _file_dur, _op_dur, _inputs)
+            seg_dur = _resolve_source_duration(
+                op.segments[i],
+                _file_dur,
+                _op_dur,
+                _inputs,
+                named_ops,
+                split_segment_durations,
+            )
             if seg_dur is not None:
                 total += seg_dur
             else:
@@ -522,14 +815,18 @@ def _validate_reorder(
 
 
 def _validate_extract(
-    op: ExtractOp, idx: int, produced: set[int], result: ValidationResult,
+    op: ExtractOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
     if op.stream not in ("audio", "video"):
         result.add_error(
             "INVALID_STREAM_TYPE",
@@ -537,18 +834,28 @@ def _validate_extract(
         )
     # Extract preserves duration
     return _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, inputs or [],
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )
 
 
 def _validate_fade(
-    op: FadeOp, idx: int, produced: set[int], durations: dict[str, float],
-    result: ValidationResult, input_count: int = 0,
+    op: FadeOp,
+    idx: int,
+    produced: set[int],
+    durations: dict[str, float],
+    result: ValidationResult,
+    input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
     if op.fade_in < 0 or op.fade_out < 0:
         result.add_error(
             "INVALID_FADE_DURATION",
@@ -561,7 +868,12 @@ def _validate_fade(
         )
 
     source_dur = _resolve_source_duration(
-        op.source, durations, op_durations or {}, inputs or [],
+        op.source,
+        durations,
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )
     if source_dur is not None and (op.fade_in + op.fade_out) > source_dur:
         result.add_error(
@@ -576,14 +888,18 @@ def _validate_fade(
 
 
 def _validate_speed(
-    op: SpeedOp, idx: int, produced: set[int], result: ValidationResult,
+    op: SpeedOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
     if op.factor <= 0:
         result.add_error(
             "INVALID_SPEED_FACTOR",
@@ -596,7 +912,12 @@ def _validate_speed(
         )
 
     source_dur = _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, inputs or [],
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )
     if source_dur is not None and op.factor > 0:
         return source_dur / op.factor
@@ -604,15 +925,19 @@ def _validate_speed(
 
 
 def _validate_crop(
-    op: CropOp, idx: int, produced: set[int], result: ValidationResult,
+    op: CropOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
     file_resolutions: dict[str, tuple[int | None, int | None]] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
     if op.x < 0 or op.y < 0 or op.width <= 0 or op.height <= 0:
         result.add_error(
             "INVALID_CROP_REGION",
@@ -638,19 +963,28 @@ def _validate_crop(
                 )
 
     return _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, _inputs,
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        _inputs,
+        named_ops,
+        split_segment_durations,
     )
 
 
 def _validate_resize(
-    op: ResizeOp, idx: int, produced: set[int], result: ValidationResult,
+    op: ResizeOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
     if op.width <= 0 or op.height <= 0:
         result.add_error(
             "INVALID_RESIZE_DIMENSIONS",
@@ -662,73 +996,109 @@ def _validate_resize(
             f"Op {idx}: fit must be 'contain' or 'stretch', got {op.fit!r}",
         )
     return _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, inputs or [],
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )
 
 
 def _validate_mix_audio(
-    op: MixAudioOp, idx: int, produced: set[int], result: ValidationResult,
+    op: MixAudioOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
-    _validate_source(op.audio, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
+    _validate_source(op.audio, produced, result, input_count, named_ops, split_segment_durations)
     if op.mix_level < 0.0 or op.mix_level > 1.0:
         result.add_error(
             "INVALID_MIX_LEVEL",
             f"Op {idx}: mix_level must be between 0.0 and 1.0, got {op.mix_level}",
         )
     return _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, inputs or [],
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )
 
 
 def _validate_volume(
-    op: VolumeOp, idx: int, produced: set[int], result: ValidationResult,
+    op: VolumeOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
     if op.gain_db < -60.0 or op.gain_db > 60.0:
         result.add_error(
             "INVALID_GAIN_VALUE",
             f"Op {idx}: gain_db must be between -60.0 and 60.0, got {op.gain_db}",
         )
     return _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, inputs or [],
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )
 
 
 def _validate_replace_audio(
-    op: ReplaceAudioOp, idx: int, produced: set[int], result: ValidationResult,
+    op: ReplaceAudioOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
-    _validate_source(op.audio, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
+    _validate_source(op.audio, produced, result, input_count, named_ops, split_segment_durations)
     return _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, inputs or [],
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )
 
 
 def _validate_normalize(
-    op: NormalizeOp, idx: int, produced: set[int], result: ValidationResult,
+    op: NormalizeOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
     if op.target_lufs < -70.0 or op.target_lufs > -5.0:
         result.add_error(
             "INVALID_NORMALIZE_TARGET",
@@ -740,20 +1110,29 @@ def _validate_normalize(
             f"Op {idx}: true_peak_dbtp must be between -10.0 and 0.0, got {op.true_peak_dbtp}",
         )
     return _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, inputs or [],
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )
 
 
 def _validate_text(
-    op: TextOp, idx: int, produced: set[int], result: ValidationResult,
+    op: TextOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
     """Validate a text overlay operation."""
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
     _check_required_filter("drawtext", result, idx)
 
     if not op.entries:
@@ -762,7 +1141,12 @@ def _validate_text(
             f"Op {idx}: no text entries provided — at least one is required",
         )
         return _resolve_source_duration(
-            op.source, file_durations or {}, op_durations or {}, inputs or [],
+            op.source,
+            file_durations or {},
+            op_durations or {},
+            inputs or [],
+            named_ops,
+            split_segment_durations,
         )
 
     for i, entry in enumerate(op.entries):
@@ -793,20 +1177,29 @@ def _validate_text(
 
     # Text preserves duration
     return _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, inputs or [],
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )
 
 
 def _validate_animate(
-    op: AnimateOp, idx: int, produced: set[int], result: ValidationResult,
+    op: AnimateOp,
+    idx: int,
+    produced: set[int],
+    result: ValidationResult,
     input_count: int = 0,
     op_durations: dict[int, Optional[float]] | None = None,
     file_durations: dict[str, float] | None = None,
     inputs: list[str] | None = None,
     named_ops: dict[str, int] | None = None,
+    split_segment_durations: dict[int, list[Optional[float]]] | None = None,
 ) -> Optional[float]:
     """Validate an animate operation."""
-    _validate_source(op.source, produced, result, input_count, named_ops)
+    _validate_source(op.source, produced, result, input_count, named_ops, split_segment_durations)
 
     has_text_layer = any(layer.type == "text" for layer in op.layers)
     if has_text_layer:
@@ -818,7 +1211,12 @@ def _validate_animate(
             f"Op {idx}: no animation layers provided — at least one is required",
         )
         return _resolve_source_duration(
-            op.source, file_durations or {}, op_durations or {}, inputs or [],
+            op.source,
+            file_durations or {},
+            op_durations or {},
+            inputs or [],
+            named_ops,
+            split_segment_durations,
         )
 
     for i, layer in enumerate(op.layers):
@@ -852,7 +1250,8 @@ def _validate_animate(
             if prop_name not in allowed_props:
                 result.add_error(
                     "INVALID_ANIMATION_PROPERTY",
-                    f"Op {idx}, layer {i}: property {prop_name!r} not animatable for {layer.type!r}",
+                    f"Op {idx}, layer {i}: property {prop_name!r} "
+                    f"not animatable for {layer.type!r}",
                 )
             if prop.easing not in ANIMATION_EASINGS:
                 result.add_error(
@@ -875,5 +1274,10 @@ def _validate_animate(
 
     # Animate preserves duration
     return _resolve_source_duration(
-        op.source, file_durations or {}, op_durations or {}, inputs or [],
+        op.source,
+        file_durations or {},
+        op_durations or {},
+        inputs or [],
+        named_ops,
+        split_segment_durations,
     )

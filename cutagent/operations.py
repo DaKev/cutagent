@@ -27,6 +27,7 @@ from cutagent.probe import probe as probe_file
 # Trim
 # ---------------------------------------------------------------------------
 
+
 def trim(
     source: str,
     start: str,
@@ -125,6 +126,7 @@ def _check_keyframe_alignment(
 # Split
 # ---------------------------------------------------------------------------
 
+
 def split(
     source: str,
     points: list[str],
@@ -176,11 +178,13 @@ def split(
         args.append(seg_path)
 
         run_ffmpeg(args)
-        results.append(OperationResult(
-            success=True,
-            output_path=seg_path,
-            duration_seconds=seg_end - seg_start,
-        ))
+        results.append(
+            OperationResult(
+                success=True,
+                output_path=seg_path,
+                duration_seconds=seg_end - seg_start,
+            )
+        )
 
     return results
 
@@ -188,6 +192,7 @@ def split(
 # ---------------------------------------------------------------------------
 # Concat
 # ---------------------------------------------------------------------------
+
 
 def concat(
     segments: list[str],
@@ -252,9 +257,14 @@ def _concat_filter(segments: list[str], output: str, codec: str) -> OperationRes
     filter_str = f"{filter_parts}concat=n={n}:v=1:a=1[outv][outa]"
 
     args += [
-        "-filter_complex", filter_str,
-        "-map", "[outv]", "-map", "[outa]",
-        "-c:v", codec,
+        "-filter_complex",
+        filter_str,
+        "-map",
+        "[outv]",
+        "-map",
+        "[outa]",
+        "-c:v",
+        codec,
         output,
     ]
     run_ffmpeg(args)
@@ -332,9 +342,7 @@ def _concat_crossfade(
 
         if has_audio:
             out_a = f"axf{idx}"
-            filters.append(
-                f"[{prev_a}][asrc{idx}]acrossfade=d={transition_duration}[{out_a}]"
-            )
+            filters.append(f"[{prev_a}][asrc{idx}]acrossfade=d={transition_duration}[{out_a}]")
             prev_a = out_a
 
         running_duration += durations[idx] - transition_duration
@@ -358,6 +366,7 @@ def _concat_crossfade(
 # ---------------------------------------------------------------------------
 # Reorder
 # ---------------------------------------------------------------------------
+
 
 def reorder(
     segments: list[str],
@@ -397,6 +406,7 @@ def reorder(
 # Extract stream
 # ---------------------------------------------------------------------------
 
+
 def extract_stream(
     source: str,
     stream: str,
@@ -435,6 +445,7 @@ def extract_stream(
 # ---------------------------------------------------------------------------
 # Fade
 # ---------------------------------------------------------------------------
+
 
 def speed(
     source: str,
@@ -540,10 +551,14 @@ def crop(
             )
 
     args = [
-        "-i", source,
-        "-vf", f"crop={width}:{height}:{x}:{y}",
-        "-c:v", codec,
-        "-c:a", "aac",
+        "-i",
+        source,
+        "-vf",
+        f"crop={width}:{height}:{x}:{y}",
+        "-c:v",
+        codec,
+        "-c:a",
+        "aac",
         output,
     ]
     run_ffmpeg(args)
@@ -588,10 +603,14 @@ def resize(
         )
 
     args = [
-        "-i", source,
-        "-vf", video_filter,
-        "-c:v", codec,
-        "-c:a", "aac",
+        "-i",
+        source,
+        "-vf",
+        video_filter,
+        "-c:v",
+        codec,
+        "-c:a",
+        "aac",
         output,
     ]
     run_ffmpeg(args)
@@ -617,7 +636,8 @@ def fade(
     info = probe_file(source)
     if fade_in + fade_out > info.duration:
         raise ValueError(
-            f"fade durations ({fade_in + fade_out:.3f}s) exceed clip duration ({info.duration:.3f}s)"
+            f"fade durations ({fade_in + fade_out:.3f}s) exceed clip duration "
+            f"({info.duration:.3f}s)"
         )
 
     video_filters: list[str] = []

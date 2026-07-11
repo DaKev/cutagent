@@ -24,6 +24,7 @@ from cutagent.models import (
 # Easing evaluation tests (pure Python, no FFmpeg needed)
 # ---------------------------------------------------------------------------
 
+
 class TestEaseValue:
     """Unit tests for the ease_value function."""
 
@@ -71,6 +72,7 @@ class TestEaseValue:
 # Interpolation expression tests (pure Python, no FFmpeg needed)
 # ---------------------------------------------------------------------------
 
+
 class TestInterpolateExpr:
     """Unit tests for the interpolate_expr FFmpeg expression compiler."""
 
@@ -115,6 +117,7 @@ class TestInterpolateExpr:
 # ---------------------------------------------------------------------------
 # Model serialization tests
 # ---------------------------------------------------------------------------
+
 
 class TestAnimationModels:
     """Tests for animation dataclass serialization."""
@@ -205,13 +208,15 @@ class TestAnimationModels:
             "op": "animate",
             "source": "test.mp4",
             "fps": 30,
-            "layers": [{
-                "type": "text",
-                "text": "Hello",
-                "start": 0.0,
-                "end": 3.0,
-                "properties": {},
-            }],
+            "layers": [
+                {
+                    "type": "text",
+                    "text": "Hello",
+                    "start": 0.0,
+                    "end": 3.0,
+                    "properties": {},
+                }
+            ],
         }
         op = parse_operation(data)
         assert isinstance(op, AnimateOp)
@@ -246,7 +251,11 @@ class TestAnimationModels:
 
     def test_text_layer_no_styling_excludes_fields(self) -> None:
         layer = AnimationLayer(
-            type="text", text="Plain", start=0.0, end=3.0, properties={},
+            type="text",
+            text="Plain",
+            start=0.0,
+            end=3.0,
+            properties={},
         )
         d = layer.to_dict()
         assert "bg_color" not in d
@@ -258,34 +267,40 @@ class TestAnimationModels:
 # Validation tests (no FFmpeg needed)
 # ---------------------------------------------------------------------------
 
+
 class TestAnimationValidation:
     """Tests for animation layer validation logic."""
 
     def test_empty_layers_raises(self) -> None:
         from cutagent.animation_ops import animate
+
         with pytest.raises(CutAgentError, match="No animation layers"):
             animate("dummy.mp4", [], "out.mp4")
 
     def test_invalid_layer_type_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
+
         layer = AnimationLayer(type="video", start=0, end=1)
         with pytest.raises(CutAgentError, match="invalid type"):
             _validate_layer(layer, 0)
 
     def test_text_layer_missing_text_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
+
         layer = AnimationLayer(type="text", text=None, start=0, end=1)
         with pytest.raises(CutAgentError, match="requires a 'text' field"):
             _validate_layer(layer, 0)
 
     def test_image_layer_missing_path_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
+
         layer = AnimationLayer(type="image", path=None, start=0, end=1)
         with pytest.raises(CutAgentError, match="requires a 'path' field"):
             _validate_layer(layer, 0)
 
     def test_invalid_property_for_layer_type_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
+
         layer = AnimationLayer(
             type="text",
             text="Hello",
@@ -303,6 +318,7 @@ class TestAnimationValidation:
 
     def test_invalid_easing_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
+
         layer = AnimationLayer(
             type="text",
             text="Hello",
@@ -320,6 +336,7 @@ class TestAnimationValidation:
 
     def test_empty_keyframes_raises(self) -> None:
         from cutagent.animation_ops import _validate_layer
+
         layer = AnimationLayer(
             type="text",
             text="Hello",
@@ -334,6 +351,7 @@ class TestAnimationValidation:
 
     def test_valid_text_layer_passes(self) -> None:
         from cutagent.animation_ops import _validate_layer
+
         layer = AnimationLayer(
             type="text",
             text="Hello",
@@ -354,6 +372,7 @@ class TestAnimationValidation:
 
     def test_valid_image_layer_passes(self) -> None:
         from cutagent.animation_ops import _validate_layer
+
         layer = AnimationLayer(
             type="image",
             path="logo.png",
@@ -377,12 +396,15 @@ class TestAnimationValidation:
 # Integration test (requires FFmpeg with drawtext)
 # ---------------------------------------------------------------------------
 
+
 def _ffmpeg_has_drawtext(ffmpeg_bin: str = "ffmpeg") -> bool:
     """Check if FFmpeg supports the drawtext filter."""
     try:
         result = subprocess.run(
             [ffmpeg_bin, "-filters"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return "drawtext" in result.stdout
     except Exception:
@@ -393,6 +415,7 @@ def _find_drawtext_ffmpeg() -> str | None:
     """Find an FFmpeg binary with drawtext support."""
     import shutil
     from pathlib import Path
+
     ffmpeg_dir = os.environ.get("CUTAGENT_FFMPEG_DIR")
     if ffmpeg_dir:
         candidate = str(Path(ffmpeg_dir) / "ffmpeg")
@@ -403,9 +426,10 @@ def _find_drawtext_ffmpeg() -> str | None:
         return system
     try:
         from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise
+
         ffmpeg_path, _ = get_or_fetch_platform_executables_else_raise()
         if _ffmpeg_has_drawtext(ffmpeg_path):
-            return ffmpeg_path
+            return str(ffmpeg_path)
     except Exception:
         pass
     return None
@@ -426,6 +450,7 @@ def _use_drawtext_ffmpeg_animation() -> Generator[None, None, None]:
         yield
         return
     from cutagent.ffmpeg import reset_cache
+
     old = os.environ.get("CUTAGENT_FFMPEG")
     os.environ["CUTAGENT_FFMPEG"] = _drawtext_ffmpeg
     reset_cache()
@@ -445,6 +470,7 @@ class TestAnimateIntegration:
 
     def test_text_animation_produces_output(self, test_video: Any, tmp_path: Any) -> None:
         from cutagent.animation_ops import animate
+
         output = str(tmp_path / "animated.mp4")
         layers = [
             AnimationLayer(
@@ -473,11 +499,16 @@ class TestAnimateIntegration:
 
     def test_multiple_text_layers(self, test_video: Any, tmp_path: Any) -> None:
         from cutagent.animation_ops import animate
+
         output = str(tmp_path / "multi_text.mp4")
         layers = [
             AnimationLayer(
-                type="text", text="Title", start=0.0, end=2.0,
-                font_size=72, font_color="white",
+                type="text",
+                text="Title",
+                start=0.0,
+                end=2.0,
+                font_size=72,
+                font_color="white",
                 properties={
                     "y": AnimationProperty(
                         keyframes=[AnimationKeyframe(0.0, -50.0), AnimationKeyframe(0.5, 100.0)],
@@ -486,8 +517,12 @@ class TestAnimateIntegration:
                 },
             ),
             AnimationLayer(
-                type="text", text="Subtitle", start=0.5, end=3.0,
-                font_size=36, font_color="yellow",
+                type="text",
+                text="Subtitle",
+                start=0.5,
+                end=3.0,
+                font_size=36,
+                font_color="yellow",
                 properties={
                     "opacity": AnimationProperty(
                         keyframes=[AnimationKeyframe(0.5, 0.0), AnimationKeyframe(1.0, 1.0)],
@@ -501,11 +536,16 @@ class TestAnimateIntegration:
 
     def test_spring_easing_renders(self, test_video: Any, tmp_path: Any) -> None:
         from cutagent.animation_ops import animate
+
         output = str(tmp_path / "spring.mp4")
         layers = [
             AnimationLayer(
-                type="text", text="Bounce!", start=0.0, end=3.0,
-                font_size=60, font_color="white",
+                type="text",
+                text="Bounce!",
+                start=0.0,
+                end=3.0,
+                font_size=60,
+                font_color="white",
                 properties={
                     "x": AnimationProperty(
                         keyframes=[AnimationKeyframe(0.0, -200.0), AnimationKeyframe(1.0, 200.0)],

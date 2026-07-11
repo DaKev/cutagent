@@ -5,19 +5,17 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+
+from cutagent.ffmpeg import run_process
 
 
 def _get_version(binary_path: str) -> str | None:
     """Run a binary with -version and return the first line."""
     try:
-        result = subprocess.run(
-            [binary_path, "-version"],
-            capture_output=True, text=True, timeout=10,
-        )
+        result = run_process([binary_path, "-version"], 10)
         first_line = result.stdout.strip().splitlines()[0] if result.stdout else ""
         return first_line or None
     except Exception:
@@ -139,17 +137,12 @@ def _check_ffmpeg_filters(ffmpeg_path: str | None) -> dict[str, Any]:
     if not ffmpeg_path:
         return {"checked": False, "available": {}, "missing": _IMPORTANT_FILTERS}
     try:
-        result = subprocess.run(
-            [ffmpeg_path, "-filters"],
-            capture_output=True, text=True, timeout=10,
-        )
+        result = run_process([ffmpeg_path, "-filters"], 10)
         output = result.stdout
         available: dict[str, bool] = {}
         for f in _IMPORTANT_FILTERS:
             available[f] = any(
-                f == line.split()[1]
-                for line in output.splitlines()
-                if len(line.split()) >= 2
+                f == line.split()[1] for line in output.splitlines() if len(line.split()) >= 2
             )
         missing = [f for f, ok in available.items() if not ok]
         return {"checked": True, "available": available, "missing": missing}
@@ -205,71 +198,87 @@ def run_doctor() -> dict[str, Any]:
     checks = []
 
     # ffmpeg check
-    checks.append({
-        "name": "ffmpeg",
-        "ok": ffmpeg_info["found"],
-        "detail": ffmpeg_info,
-    })
+    checks.append(
+        {
+            "name": "ffmpeg",
+            "ok": ffmpeg_info["found"],
+            "detail": ffmpeg_info,
+        }
+    )
 
     # ffprobe check
-    checks.append({
-        "name": "ffprobe",
-        "ok": ffprobe_info["found"],
-        "detail": ffprobe_info,
-    })
+    checks.append(
+        {
+            "name": "ffprobe",
+            "ok": ffprobe_info["found"],
+            "detail": ffprobe_info,
+        }
+    )
 
     # Version match
-    checks.append({
-        "name": "versions_match",
-        "ok": versions_match if versions_match is not None else None,
-        "detail": {
-            "ffmpeg": ffmpeg_info["version"],
-            "ffprobe": ffprobe_info["version"],
-            "ffmpeg_version_number": ffmpeg_version_number,
-            "ffprobe_version_number": ffprobe_version_number,
-        },
-    })
+    checks.append(
+        {
+            "name": "versions_match",
+            "ok": versions_match if versions_match is not None else None,
+            "detail": {
+                "ffmpeg": ffmpeg_info["version"],
+                "ffprobe": ffprobe_info["version"],
+                "ffmpeg_version_number": ffmpeg_version_number,
+                "ffprobe_version_number": ffprobe_version_number,
+            },
+        }
+    )
 
     # ffmpeg filters
     filter_info = _check_ffmpeg_filters(ffmpeg_info.get("path"))
-    checks.append({
-        "name": "ffmpeg_filters",
-        "ok": len(filter_info["missing"]) == 0 if filter_info["checked"] else None,
-        "detail": filter_info,
-    })
+    checks.append(
+        {
+            "name": "ffmpeg_filters",
+            "ok": len(filter_info["missing"]) == 0 if filter_info["checked"] else None,
+            "detail": filter_info,
+        }
+    )
 
     # Shebang
     shebang_info = _check_shebang()
-    checks.append({
-        "name": "shebang",
-        "ok": shebang_info.get("ok"),
-        "detail": shebang_info,
-    })
+    checks.append(
+        {
+            "name": "shebang",
+            "ok": shebang_info.get("ok"),
+            "detail": shebang_info,
+        }
+    )
 
     # Packages
     for pkg in ("static_ffmpeg", "imageio_ffmpeg"):
         info = _check_package(pkg)
-        checks.append({
-            "name": f"package:{pkg}",
-            "ok": info["installed"],
-            "detail": info,
-        })
+        checks.append(
+            {
+                "name": f"package:{pkg}",
+                "ok": info["installed"],
+                "detail": info,
+            }
+        )
 
     # Temp dir
     tmp_info = _check_temp_dir()
-    checks.append({
-        "name": "temp_directory",
-        "ok": tmp_info["writable"],
-        "detail": tmp_info,
-    })
+    checks.append(
+        {
+            "name": "temp_directory",
+            "ok": tmp_info["writable"],
+            "detail": tmp_info,
+        }
+    )
 
     # Env vars
     env_info = _check_env_vars()
-    checks.append({
-        "name": "env_vars",
-        "ok": True,
-        "detail": env_info,
-    })
+    checks.append(
+        {
+            "name": "env_vars",
+            "ok": True,
+            "detail": env_info,
+        }
+    )
 
     all_ok = ffmpeg_info["found"] and ffprobe_info["found"] and tmp_info["writable"]
 

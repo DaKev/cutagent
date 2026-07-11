@@ -130,6 +130,7 @@ CutAgent now supports a payload-first execution path for single operations:
 ```bash
 # 1) Discover schemas at runtime
 cutagent schema index
+cutagent schema analysis
 cutagent schema operation trim
 cutagent schema edl
 
@@ -162,8 +163,14 @@ cutagent op resize --dry-run --json '{
 For large analysis responses, shape output to protect agent context:
 
 ```bash
+# Discover which analysis commands support fields, NDJSON, limits, and filters
+cutagent schema analysis
+
 # Keep only selected fields
 cutagent probe input.mp4 --fields path,duration,width,height
+
+# Bound list-heavy output (unknown field names return structured errors)
+cutagent audio-levels input.mp4 --interval 5 --limit 20 --fields path,audio_levels
 
 # Stream heavy list responses as NDJSON
 cutagent scenes input.mp4 --response-format ndjson

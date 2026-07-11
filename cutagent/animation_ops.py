@@ -33,6 +33,7 @@ from cutagent.text_ops import detect_system_font
 # Validation
 # ---------------------------------------------------------------------------
 
+
 def _validate_layer(layer: AnimationLayer, idx: int) -> None:
     """Validate a single animation layer, raising CutAgentError on problems."""
     if layer.type not in ANIMATION_LAYER_TYPES:
@@ -64,7 +65,10 @@ def _validate_layer(layer: AnimationLayer, idx: int) -> None:
         if prop_name not in allowed_props:
             raise CutAgentError(
                 code=INVALID_ANIMATION_PROPERTY,
-                message=f"Layer {idx}: property {prop_name!r} is not animatable for {layer.type!r} layers",
+                message=(
+                    f"Layer {idx}: property {prop_name!r} is not animatable "
+                    f"for {layer.type!r} layers"
+                ),
                 recovery=[f"Animatable properties for {layer.type}: {sorted(allowed_props)}"],
                 context={"layer_index": idx, "property": prop_name},
             )
@@ -87,6 +91,7 @@ def _validate_layer(layer: AnimationLayer, idx: int) -> None:
 # ---------------------------------------------------------------------------
 # Text layer → drawtext filter
 # ---------------------------------------------------------------------------
+
 
 def _escape_drawtext(text: str) -> str:
     """Escape special characters for FFmpeg drawtext filter."""
@@ -164,6 +169,7 @@ def _build_text_filter(layer: AnimationLayer) -> str:
 # Image layer → overlay filter
 # ---------------------------------------------------------------------------
 
+
 def _build_image_filters(layer: AnimationLayer, input_idx: int) -> tuple[list[str], str]:
     """Build filter chains for an image overlay layer.
 
@@ -210,6 +216,7 @@ def _build_image_filters(layer: AnimationLayer, input_idx: int) -> tuple[list[st
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def animate(
     source: str,
@@ -275,15 +282,15 @@ def animate(
         current_label = "0:v"
 
     # Step 2: Apply image overlays sequentially
-    for i, (img_layer, input_idx) in enumerate(zip(image_layers, image_input_indices, strict=False)):
+    for i, (img_layer, input_idx) in enumerate(
+        zip(image_layers, image_input_indices, strict=False)
+    ):
         img_filters, overlay_params = _build_image_filters(img_layer, input_idx)
         filter_lines.extend(img_filters)
 
         out_label = f"ovr{i}"
         img_label = f"img{input_idx}"
-        filter_lines.append(
-            f"[{current_label}][{img_label}]overlay={overlay_params}[{out_label}]"
-        )
+        filter_lines.append(f"[{current_label}][{img_label}]overlay={overlay_params}[{out_label}]")
         current_label = out_label
 
     if not filter_lines:
@@ -296,11 +303,16 @@ def animate(
     filter_complex = ";".join(filter_lines)
 
     args += [
-        "-filter_complex", filter_complex,
-        "-map", f"[{current_label}]",
-        "-map", "0:a?",
-        "-c:v", codec,
-        "-c:a", "aac",
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        f"[{current_label}]",
+        "-map",
+        "0:a?",
+        "-c:v",
+        codec,
+        "-c:a",
+        "aac",
         output,
     ]
 

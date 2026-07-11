@@ -32,6 +32,7 @@ def _check_audio_stream(source: str) -> None:
 # Mix audio
 # ---------------------------------------------------------------------------
 
+
 def mix_audio(
     source: str,
     audio: str,
@@ -69,31 +70,40 @@ def mix_audio(
 
     original_weight = 1.0
     args = [
-        "-i", source,
-        "-i", audio,
+        "-i",
+        source,
+        "-i",
+        audio,
         "-filter_complex",
         (
             f"[0:a]volume={original_weight}[a0];"
             f"[1:a]volume={mix_level}[a1];"
             f"[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout]"
         ),
-        "-map", "0:v",
-        "-map", "[aout]",
-        "-c:v", codec,
-        "-c:a", "aac",
+        "-map",
+        "0:v",
+        "-map",
+        "[aout]",
+        "-c:v",
+        codec,
+        "-c:a",
+        "aac",
         "-shortest",
         output,
     ]
 
     run_ffmpeg(args)
     return OperationResult(
-        success=True, output_path=output, duration_seconds=info.duration,
+        success=True,
+        output_path=output,
+        duration_seconds=info.duration,
     )
 
 
 # ---------------------------------------------------------------------------
 # Volume / gain
 # ---------------------------------------------------------------------------
+
 
 def adjust_volume(
     source: str,
@@ -127,22 +137,29 @@ def adjust_volume(
     info = probe_file(source)
 
     args = [
-        "-i", source,
-        "-af", f"volume={gain_db}dB",
-        "-c:v", codec,
-        "-c:a", "aac",
+        "-i",
+        source,
+        "-af",
+        f"volume={gain_db}dB",
+        "-c:v",
+        codec,
+        "-c:a",
+        "aac",
         output,
     ]
 
     run_ffmpeg(args)
     return OperationResult(
-        success=True, output_path=output, duration_seconds=info.duration,
+        success=True,
+        output_path=output,
+        duration_seconds=info.duration,
     )
 
 
 # ---------------------------------------------------------------------------
 # Replace audio
 # ---------------------------------------------------------------------------
+
 
 def replace_audio(
     source: str,
@@ -168,25 +185,34 @@ def replace_audio(
     info = probe_file(source)
 
     args = [
-        "-i", source,
-        "-i", audio,
-        "-map", "0:v",
-        "-map", "1:a",
-        "-c:v", codec,
-        "-c:a", "aac",
+        "-i",
+        source,
+        "-i",
+        audio,
+        "-map",
+        "0:v",
+        "-map",
+        "1:a",
+        "-c:v",
+        codec,
+        "-c:a",
+        "aac",
         "-shortest",
         output,
     ]
 
     run_ffmpeg(args)
     return OperationResult(
-        success=True, output_path=output, duration_seconds=info.duration,
+        success=True,
+        output_path=output,
+        duration_seconds=info.duration,
     )
 
 
 # ---------------------------------------------------------------------------
 # Normalize audio (EBU R128)
 # ---------------------------------------------------------------------------
+
 
 def normalize_audio(
     source: str,
@@ -228,19 +254,23 @@ def normalize_audio(
     _check_audio_stream(source)
     info = probe_file(source)
 
-    loudnorm_filter = (
-        f"loudnorm=I={target_lufs}:TP={true_peak_dbtp}:LRA=11"
-    )
+    loudnorm_filter = f"loudnorm=I={target_lufs}:TP={true_peak_dbtp}:LRA=11"
 
     args = [
-        "-i", source,
-        "-af", loudnorm_filter,
-        "-c:v", codec,
-        "-c:a", "aac",
+        "-i",
+        source,
+        "-af",
+        loudnorm_filter,
+        "-c:v",
+        codec,
+        "-c:a",
+        "aac",
         output,
     ]
 
     run_ffmpeg(args)
     return OperationResult(
-        success=True, output_path=output, duration_seconds=info.duration,
+        success=True,
+        output_path=output,
+        duration_seconds=info.duration,
     )

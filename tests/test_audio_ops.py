@@ -23,13 +23,17 @@ class TestMixAudio:
         assert result.success
         assert os.path.exists(out)
 
-    def test_mix_invalid_level_too_high(self, test_video: Any, test_audio_file: Any, output_dir: Any) -> None:
+    def test_mix_invalid_level_too_high(
+        self, test_video: Any, test_audio_file: Any, output_dir: Any
+    ) -> None:
         out = os.path.join(output_dir, "bad.mp4")
         with pytest.raises(CutAgentError) as exc_info:
             mix_audio(test_video, test_audio_file, out, mix_level=1.5)
         assert exc_info.value.code == "INVALID_MIX_LEVEL"
 
-    def test_mix_invalid_level_negative(self, test_video: Any, test_audio_file: Any, output_dir: Any) -> None:
+    def test_mix_invalid_level_negative(
+        self, test_video: Any, test_audio_file: Any, output_dir: Any
+    ) -> None:
         out = os.path.join(output_dir, "bad.mp4")
         with pytest.raises(CutAgentError) as exc_info:
             mix_audio(test_video, test_audio_file, out, mix_level=-0.1)

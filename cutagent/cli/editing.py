@@ -1,13 +1,14 @@
-from typing import Optional
+from typing import Annotated, Optional
 
 import typer
 
-from cutagent.cli.utils import json_error, json_out
+from cutagent.cli.utils import JsonTyperCommand, json_error, json_out
 from cutagent.errors import EXIT_VALIDATION, CutAgentError
 
 app = typer.Typer(help="Editing and modification commands")
 
-@app.command("trim")
+
+@app.command("trim", cls=JsonTyperCommand)
 def cmd_trim(
     file: str,
     start: str = typer.Option(..., help="Start time"),
@@ -17,20 +18,25 @@ def cmd_trim(
 ) -> int:
     """Trim a video segment."""
     from cutagent.operations import trim
+
     try:
         result = trim(file, start, end, output, codec=codec)
         return json_out(result.to_dict())
     except CutAgentError as exc:
         return json_error(exc)
     except ValueError as exc:
-        return json_out({
-            "error": True,
-            "code": "INVALID_TIME_FORMAT",
-            "message": str(exc),
-            "recovery": ["Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds"],
-        }, EXIT_VALIDATION)
+        return json_out(
+            {
+                "error": True,
+                "code": "INVALID_TIME_FORMAT",
+                "message": str(exc),
+                "recovery": ["Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds"],
+            },
+            EXIT_VALIDATION,
+        )
 
-@app.command("split")
+
+@app.command("split", cls=JsonTyperCommand)
 def cmd_split(
     file: str,
     at: str = typer.Option(..., help="Comma-separated split points (e.g. 00:05:00,00:10:00)"),
@@ -39,26 +45,33 @@ def cmd_split(
 ) -> int:
     """Split a video at given points."""
     from cutagent.operations import split
+
     try:
         points = at.split(",")
         results = split(file, points, prefix, codec=codec)
-        return json_out({
-            "segments": [r.to_dict() for r in results],
-            "count": len(results),
-        })
+        return json_out(
+            {
+                "segments": [r.to_dict() for r in results],
+                "count": len(results),
+            }
+        )
     except CutAgentError as exc:
         return json_error(exc)
     except ValueError as exc:
-        return json_out({
-            "error": True,
-            "code": "INVALID_TIME_FORMAT",
-            "message": str(exc),
-            "recovery": ["Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds"],
-        }, EXIT_VALIDATION)
+        return json_out(
+            {
+                "error": True,
+                "code": "INVALID_TIME_FORMAT",
+                "message": str(exc),
+                "recovery": ["Use HH:MM:SS, HH:MM:SS.mmm, MM:SS, or plain seconds"],
+            },
+            EXIT_VALIDATION,
+        )
 
-@app.command("concat")
+
+@app.command("concat", cls=JsonTyperCommand)
 def cmd_concat(
-    files: list[str] = typer.Argument(..., help="Video files to concatenate"),
+    files: Annotated[list[str], typer.Argument(help="Video files to concatenate")],
     output: str = typer.Option(..., "-o", "--output", help="Output file path"),
     codec: str = typer.Option("copy", help="Codec: 'copy' (default) or codec name"),
     transition: Optional[str] = typer.Option(
@@ -69,6 +82,7 @@ def cmd_concat(
 ) -> int:
     """Concatenate video files."""
     from cutagent.operations import concat
+
     try:
         result = concat(
             files,
@@ -81,14 +95,18 @@ def cmd_concat(
     except CutAgentError as exc:
         return json_error(exc)
     except ValueError as exc:
-        return json_out({
-            "error": True,
-            "code": "INVALID_ARGUMENT",
-            "message": str(exc),
-            "recovery": ["Check --transition and --transition-duration values"],
-        }, EXIT_VALIDATION)
+        return json_out(
+            {
+                "error": True,
+                "code": "INVALID_ARGUMENT",
+                "message": str(exc),
+                "recovery": ["Check --transition and --transition-duration values"],
+            },
+            EXIT_VALIDATION,
+        )
 
-@app.command("extract")
+
+@app.command("extract", cls=JsonTyperCommand)
 def cmd_extract(
     file: str,
     stream: str = typer.Option(..., help="Stream to extract ('audio' or 'video')"),
@@ -96,6 +114,7 @@ def cmd_extract(
 ) -> int:
     """Extract audio or video stream."""
     from cutagent.operations import extract_stream
+
     try:
         if stream not in ["audio", "video"]:
             raise ValueError(f"Invalid stream type: {stream}")
@@ -104,14 +123,18 @@ def cmd_extract(
     except CutAgentError as exc:
         return json_error(exc)
     except ValueError as exc:
-        return json_out({
-            "error": True,
-            "code": "INVALID_ARGUMENT",
-            "message": str(exc),
-            "recovery": ["Use --stream 'audio' or 'video'"],
-        }, EXIT_VALIDATION)
+        return json_out(
+            {
+                "error": True,
+                "code": "INVALID_ARGUMENT",
+                "message": str(exc),
+                "recovery": ["Use --stream 'audio' or 'video'"],
+            },
+            EXIT_VALIDATION,
+        )
 
-@app.command("speed")
+
+@app.command("speed", cls=JsonTyperCommand)
 def cmd_speed(
     file: str,
     factor: float = typer.Option(..., help="Speed factor (>1 faster, <1 slower)"),
@@ -120,6 +143,7 @@ def cmd_speed(
 ) -> int:
     """Change playback speed."""
     from cutagent.operations import speed
+
     try:
         result = speed(
             file,
@@ -131,15 +155,18 @@ def cmd_speed(
     except CutAgentError as exc:
         return json_error(exc)
     except ValueError as exc:
-        return json_out({
-            "error": True,
-            "code": "INVALID_ARGUMENT",
-            "message": str(exc),
-            "recovery": ["Use --factor between 0.25 and 100.0"],
-        }, EXIT_VALIDATION)
+        return json_out(
+            {
+                "error": True,
+                "code": "INVALID_ARGUMENT",
+                "message": str(exc),
+                "recovery": ["Use --factor between 0.25 and 100.0"],
+            },
+            EXIT_VALIDATION,
+        )
 
 
-@app.command("crop")
+@app.command("crop", cls=JsonTyperCommand)
 def cmd_crop(
     file: str,
     x: int = typer.Option(..., help="Crop origin X coordinate"),
@@ -151,6 +178,7 @@ def cmd_crop(
 ) -> int:
     """Crop a rectangular region from a video."""
     from cutagent.operations import crop
+
     try:
         result = crop(
             file,
@@ -166,7 +194,7 @@ def cmd_crop(
         return json_error(exc)
 
 
-@app.command("resize")
+@app.command("resize", cls=JsonTyperCommand)
 def cmd_resize(
     file: str,
     width: int = typer.Option(..., help="Target output width in pixels"),
@@ -182,6 +210,7 @@ def cmd_resize(
 ) -> int:
     """Resize a video into a target canvas."""
     from cutagent.operations import resize
+
     try:
         result = resize(
             file,

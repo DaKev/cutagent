@@ -30,6 +30,7 @@ from cutagent.models import (
 # parse_time
 # ---------------------------------------------------------------------------
 
+
 class TestParseTime:
     def test_seconds_int(self) -> None:
         assert parse_time("90") == 90.0
@@ -63,9 +64,12 @@ class TestFormatTime:
 # StreamInfo
 # ---------------------------------------------------------------------------
 
+
 class TestStreamInfo:
     def test_round_trip(self) -> None:
-        s = StreamInfo(index=0, codec_name="h264", codec_type="video", width=1920, height=1080, fps=30.0)
+        s = StreamInfo(
+            index=0, codec_name="h264", codec_type="video", width=1920, height=1080, fps=30.0
+        )
         d = s.to_dict()
         assert d["width"] == 1920
         s2 = StreamInfo.from_dict(d)
@@ -82,18 +86,33 @@ class TestStreamInfo:
 # ProbeResult
 # ---------------------------------------------------------------------------
 
+
 class TestProbeResult:
     def test_video_stream_property(self) -> None:
         vs = StreamInfo(index=0, codec_name="h264", codec_type="video", width=640, height=480)
         aus = StreamInfo(index=1, codec_name="aac", codec_type="audio")
-        pr = ProbeResult(path="test.mp4", duration=5.0, format_name="mov,mp4", size_bytes=1000, bit_rate=8000, streams=[vs, aus])
+        pr = ProbeResult(
+            path="test.mp4",
+            duration=5.0,
+            format_name="mov,mp4",
+            size_bytes=1000,
+            bit_rate=8000,
+            streams=[vs, aus],
+        )
         assert pr.video_stream is vs
         assert pr.audio_stream is aus
         assert pr.width == 640
         assert pr.height == 480
 
     def test_round_trip(self) -> None:
-        pr = ProbeResult(path="test.mp4", duration=5.0, format_name="mov,mp4", size_bytes=1000, bit_rate=8000, streams=[])
+        pr = ProbeResult(
+            path="test.mp4",
+            duration=5.0,
+            format_name="mov,mp4",
+            size_bytes=1000,
+            bit_rate=8000,
+            streams=[],
+        )
         d = pr.to_dict()
         pr2 = ProbeResult.from_dict(d)
         assert pr2.duration == 5.0
@@ -102,6 +121,7 @@ class TestProbeResult:
 # ---------------------------------------------------------------------------
 # Operations
 # ---------------------------------------------------------------------------
+
 
 class TestOperations:
     def test_trim_round_trip(self) -> None:
@@ -198,6 +218,7 @@ class TestOperations:
 
     def test_parse_unknown_op(self) -> None:
         from cutagent.errors import CutAgentError
+
         with pytest.raises(CutAgentError, match="Unknown operation"):
             parse_operation({"op": "warp"})
 
@@ -205,6 +226,7 @@ class TestOperations:
 # ---------------------------------------------------------------------------
 # EDL
 # ---------------------------------------------------------------------------
+
 
 class TestEDL:
     def test_round_trip(self) -> None:
@@ -224,6 +246,7 @@ class TestEDL:
 # ---------------------------------------------------------------------------
 # OperationResult
 # ---------------------------------------------------------------------------
+
 
 class TestOperationResult:
     def test_to_dict_minimal(self) -> None:
@@ -252,7 +275,14 @@ class TestContentModels:
         assert parsed.width == 640
 
     def test_scene_info_round_trip(self) -> None:
-        scene = SceneInfo(start=0.0, end=2.5, duration=2.5, frames=["a.jpg", "b.jpg"], has_audio=True, avg_loudness=-18.2)
+        scene = SceneInfo(
+            start=0.0,
+            end=2.5,
+            duration=2.5,
+            frames=["a.jpg", "b.jpg"],
+            has_audio=True,
+            avg_loudness=-18.2,
+        )
         data = scene.to_dict()
         parsed = SceneInfo.from_dict(data)
         assert parsed.end == 2.5

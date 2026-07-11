@@ -16,6 +16,8 @@ from cutagent.errors import (
 from cutagent.ffmpeg import run_ffmpeg, run_ffprobe, run_ffprobe_json
 from cutagent.models import (
     AudioLevel,
+    AudioLevelSection,
+    AudioLevelSummary,
     BeatInfo,
     FrameResult,
     ProbeResult,
@@ -78,6 +80,7 @@ def _probe_image_size(path: str | Path) -> tuple[int | None, int | None]:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def probe(path: str | Path) -> ProbeResult:
     """Probe a media file and return structured metadata.
 
@@ -125,13 +128,19 @@ def keyframes(path: str | Path) -> list[float]:
     """
     p = _check_input(path)
 
-    result = run_ffprobe([
-        "-v", "quiet",
-        "-select_streams", "v:0",
-        "-show_entries", "packet=pts_time,flags",
-        "-of", "csv=print_section=0",
-        str(p),
-    ])
+    result = run_ffprobe(
+        [
+            "-v",
+            "quiet",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "packet=pts_time,flags",
+            "-of",
+            "csv=print_section=0",
+            str(p),
+        ]
+    )
 
     timestamps: list[float] = []
     for line in result.stdout.strip().splitlines():
@@ -230,12 +239,18 @@ def detect_scenes(
     info = probe(p)
 
     # Use the select filter to detect scene changes and print timestamps
-    result = run_ffmpeg([
-        "-i", str(p),
-        "-vf", f"select='gt(scene,{threshold})',showinfo",
-        "-f", "null",
-        "-",
-    ], check=False)
+    result = run_ffmpeg(
+        [
+            "-i",
+            str(p),
+            "-vf",
+            f"select='gt(scene,{threshold})',showinfo",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=False,
+    )
 
     # Scene timestamps appear in stderr from the showinfo filter
     timestamps: list[float] = []
@@ -297,12 +312,18 @@ def detect_silence(
     info = probe(p)
 
     noise = f"{float(threshold)}dB"
-    result = run_ffmpeg([
-        "-i", str(p),
-        "-af", f"silencedetect=noise={noise}:d={float(min_duration)}",
-        "-f", "null",
-        "-",
-    ], check=False)
+    result = run_ffmpeg(
+        [
+            "-i",
+            str(p),
+            "-af",
+            f"silencedetect=noise={noise}:d={float(min_duration)}",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=False,
+    )
 
     start_re = re.compile(r"silence_start:\s*([0-9]+(?:\.[0-9]+)?)")
     end_re = re.compile(r"silence_end:\s*([0-9]+(?:\.[0-9]+)?)")
@@ -337,13 +358,20 @@ def audio_levels(path: str | Path, interval: float = 1.0) -> list[AudioLevel]:
         raise ValueError("interval must be > 0")
 
     p = _check_input(path)
-    result = run_ffmpeg([
-        "-loglevel", "error",
-        "-i", str(p),
-        "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-",
-        "-f", "null",
-        "-",
-    ], check=False)
+    result = run_ffmpeg(
+        [
+            "-loglevel",
+            "error",
+            "-i",
+            str(p),
+            "-af",
+            "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=False,
+    )
 
     combined = f"{result.stdout}\n{result.stderr}"
     pts_re = re.compile(r"pts_time:([0-9]+(?:\.[0-9]+)?)")
@@ -380,13 +408,71 @@ def audio_levels(path: str | Path, interval: float = 1.0) -> list[AudioLevel]:
         vals = buckets[idx]
         if not vals:
             continue
-        levels.append(AudioLevel(
-            timestamp=round(idx * interval, 3),
-            rms_db=round(sum(vals) / len(vals), 3),
-            sample_count=len(vals),
-        ))
+        levels.append(
+            AudioLevel(
+                timestamp=round(idx * interval, 3),
+                rms_db=round(sum(vals) / len(vals), 3),
+                sample_count=len(vals),
+            )
+        )
 
     return levels
+
+
+def summarize_audio_levels(
+    levels: list[AudioLevel], notable_change_threshold_db: float = 6.0
+) -> AudioLevelSummary:
+    """Summarize a loudness timeline and identify abrupt level changes."""
+    if notable_change_threshold_db <= 0:
+        raise ValueError("notable_change_threshold_db must be > 0")
+    if not levels:
+        return AudioLevelSummary(None, None, None, notable_change_threshold_db)
+
+    values = [level.rms_db for level in levels]
+    average = sum(values) / len(values)
+    sample_interval = levels[1].timestamp - levels[0].timestamp if len(levels) > 1 else 0.0
+    sections: list[AudioLevelSection] = []
+    section_levels: list[AudioLevel] = []
+    section_classification: str | None = None
+
+    def finish_section() -> None:
+        if not section_levels or section_classification is None:
+            return
+        section_average = sum(level.rms_db for level in section_levels) / len(section_levels)
+        sections.append(
+            AudioLevelSection(
+                start=section_levels[0].timestamp,
+                end=round(section_levels[-1].timestamp + sample_interval, 3),
+                average_rms_db=round(section_average, 3),
+                delta_from_average_db=round(section_average - average, 3),
+                classification=section_classification,
+            )
+        )
+
+    for level in levels:
+        delta = level.rms_db - average
+        classification = (
+            "loud"
+            if delta >= notable_change_threshold_db
+            else "quiet"
+            if delta <= -notable_change_threshold_db
+            else None
+        )
+        if classification != section_classification:
+            finish_section()
+            section_levels = []
+            section_classification = classification
+        if classification is not None:
+            section_levels.append(level)
+    finish_section()
+
+    return AudioLevelSummary(
+        minimum_rms_db=min(values),
+        maximum_rms_db=max(values),
+        average_rms_db=round(average, 3),
+        notable_change_threshold_db=notable_change_threshold_db,
+        notable_sections=sections,
+    )
 
 
 def summarize(
@@ -515,10 +601,7 @@ def detect_beats(
     # Estimate BPM from median inter-beat interval
     bpm: float | None = None
     if len(beats) >= 2:
-        intervals = [
-            beats[i + 1].timestamp - beats[i].timestamp
-            for i in range(len(beats) - 1)
-        ]
+        intervals = [beats[i + 1].timestamp - beats[i].timestamp for i in range(len(beats) - 1)]
         intervals.sort()
         median_interval = intervals[len(intervals) // 2]
         if median_interval > 0:

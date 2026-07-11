@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from typing import Any, Optional
+from typing import Any, Generator, Optional
 
 import pytest
 
@@ -15,7 +15,9 @@ def _ffmpeg_has_drawtext(ffmpeg_bin: str = "ffmpeg") -> bool:
     try:
         result = subprocess.run(
             [ffmpeg_bin, "-filters"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return "drawtext" in result.stdout
     except Exception:
@@ -26,6 +28,7 @@ def _find_drawtext_ffmpeg() -> str | None:
     """Find an FFmpeg binary with drawtext support."""
     import shutil
     from pathlib import Path
+
     ffmpeg_dir = os.environ.get("CUTAGENT_FFMPEG_DIR")
     if ffmpeg_dir:
         candidate = str(Path(ffmpeg_dir) / "ffmpeg")
@@ -36,9 +39,10 @@ def _find_drawtext_ffmpeg() -> str | None:
         return system
     try:
         from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise
+
         ffmpeg_path, _ = get_or_fetch_platform_executables_else_raise()
         if _ffmpeg_has_drawtext(ffmpeg_path):
-            return ffmpeg_path
+            return str(ffmpeg_path)
     except Exception:
         pass
     return None
@@ -53,7 +57,7 @@ requires_drawtext = pytest.mark.skipif(
 
 
 @pytest.fixture(autouse=True)
-def _use_drawtext_ffmpeg_cli():
+def _use_drawtext_ffmpeg_cli() -> Generator[None, None, None]:
     """Ensure CLI subprocesses use an FFmpeg binary that has the drawtext filter."""
     if _drawtext_ffmpeg is None:
         yield
@@ -70,6 +74,7 @@ def _use_drawtext_ffmpeg_cli():
 def _run_cli(*args: str, input_text: Optional[str] = None) -> subprocess.CompletedProcess[str]:
     """Run cutagent CLI as a subprocess and return the result."""
     import sys
+
     cmd = [sys.executable, "-m", "cutagent"] + list(args)
     return subprocess.run(
         cmd,
@@ -84,14 +89,16 @@ class TestEdlJsonArgument:
     """Tests for the --edl-json inline argument on validate and execute."""
 
     def test_validate_with_edl_json(self, test_video: str) -> None:
-        edl = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "source": test_video, "start": "0", "end": "3"},
-            ],
-            "output": {"path": "out.mp4", "codec": "copy"},
-        })
+        edl = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "source": test_video, "start": "0", "end": "3"},
+                ],
+                "output": {"path": "out.mp4", "codec": "copy"},
+            }
+        )
         result = _run_cli("validate", "--edl-json", edl)
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -99,14 +106,16 @@ class TestEdlJsonArgument:
 
     def test_execute_with_edl_json(self, test_video: str, output_dir: str) -> None:
         out = os.path.join(output_dir, "inline_exec.mp4")
-        edl = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "source": test_video, "start": "0", "end": "3"},
-            ],
-            "output": {"path": out, "codec": "copy"},
-        })
+        edl = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "source": test_video, "start": "0", "end": "3"},
+                ],
+                "output": {"path": out, "codec": "copy"},
+            }
+        )
         result = _run_cli("execute", "--edl-json", edl, "-q")
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -114,14 +123,16 @@ class TestEdlJsonArgument:
         assert os.path.exists(out)
 
     def test_validate_with_edl_json_input_ref(self, test_video: str) -> None:
-        edl = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
-            ],
-            "output": {"path": "out.mp4", "codec": "copy"},
-        })
+        edl = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
+                ],
+                "output": {"path": "out.mp4", "codec": "copy"},
+            }
+        )
         result = _run_cli("validate", "--edl-json", edl)
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -135,7 +146,13 @@ class TestEdlJsonArgument:
         # but in our setup it returns error JSON with exit code 0 or 1.
         # We just care that it reports an error.
         assert "error" in result.stdout or result.returncode != 0
-        assert "Missing argument" in result.stdout or "Missing argument" in result.stderr or "MISSING_FIELD" in result.stdout or "INPUT_NOT_FOUND" in result.stdout or "unexpected error" in result.stdout
+        assert (
+            "Missing argument" in result.stdout
+            or "Missing argument" in result.stderr
+            or "MISSING_FIELD" in result.stdout
+            or "INPUT_NOT_FOUND" in result.stdout
+            or "unexpected error" in result.stdout
+        )
 
 
 class TestProgressOutput:
@@ -143,14 +160,16 @@ class TestProgressOutput:
 
     def test_progress_on_stderr(self, test_video: str, output_dir: str) -> None:
         out = os.path.join(output_dir, "progress.mp4")
-        edl = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
-            ],
-            "output": {"path": out, "codec": "copy"},
-        })
+        edl = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
+                ],
+                "output": {"path": out, "codec": "copy"},
+            }
+        )
         result = _run_cli("execute", "--edl-json", edl)
         assert result.returncode == 0
 
@@ -167,19 +186,24 @@ class TestProgressOutput:
 
     def test_quiet_suppresses_progress(self, test_video: str, output_dir: str) -> None:
         out = os.path.join(output_dir, "quiet.mp4")
-        edl = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
-            ],
-            "output": {"path": out, "codec": "copy"},
-        })
+        edl = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "source": "$input.0", "start": "0", "end": "3"},
+                ],
+                "output": {"path": out, "codec": "copy"},
+            }
+        )
         result = _run_cli("execute", "--edl-json", edl, "-q")
         assert result.returncode == 0
         # stderr should be empty (no progress)
-        progress_lines = [line for line in result.stderr.strip().splitlines()
-                          if line.strip() and '"progress"' in line]
+        progress_lines = [
+            line
+            for line in result.stderr.strip().splitlines()
+            if line.strip() and '"progress"' in line
+        ]
         assert len(progress_lines) == 0
 
 
@@ -187,14 +211,16 @@ class TestEstimatedDurationInCli:
     """Tests for estimated_duration in validate CLI output."""
 
     def test_validate_includes_estimated_duration(self, test_video: Any) -> None:
-        edl = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "source": "$input.0", "start": "1", "end": "4"},
-            ],
-            "output": {"path": "out.mp4", "codec": "copy"},
-        })
+        edl = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "source": "$input.0", "start": "1", "end": "4"},
+                ],
+                "output": {"path": "out.mp4", "codec": "copy"},
+            }
+        )
         result = _run_cli("validate", "--edl-json", edl)
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -227,7 +253,10 @@ class TestVersionFlag:
 
     def test_version_output(self) -> None:
         result = _run_cli("--version")
-        assert "cutagent" in result.stdout or "cutagent" in result.stderr or "version" in result.stdout or "version" in result.stderr
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["name"] == "cutagent"
+        assert data["version"]
 
 
 class TestFramesConvenience:
@@ -254,13 +283,23 @@ class TestFramesConvenience:
     def test_frames_mutually_exclusive(self, test_video: str, output_dir: str) -> None:
         """Cannot combine --at with --count."""
         result = _run_cli(
-            "frames", test_video,
-            "--at", "1", "--count", "3",
-            "--output-dir", output_dir,
+            "frames",
+            test_video,
+            "--at",
+            "1",
+            "--count",
+            "3",
+            "--output-dir",
+            output_dir,
         )
-        assert "error" in result.stdout or result.returncode != 0 or "Cannot use" in result.stdout or "cannot be used" in result.stderr
+        assert (
+            "error" in result.stdout
+            or result.returncode != 0
+            or "Cannot use" in result.stdout
+            or "cannot be used" in result.stderr
+        )
         # We don't strictly care about the exact message, just that it fails
-        # assert "not allowed with argument" in result.stderr or "Cannot use" in result.stderr or "mutually exclusive" in result.stderr or "not allowed" in result.stderr
+        # Covered above by checking several stdout/stderr failure shapes.
 
 
 @requires_drawtext
@@ -269,10 +308,12 @@ class TestTextReviewTimestamps:
 
     def test_text_output_includes_review_timestamps(self, test_video: str, output_dir: str) -> None:
         out = os.path.join(output_dir, "text_review.mp4")
-        entries = json.dumps([
-            {"text": "Title", "start": "0", "end": "3"},
-            {"text": "Subtitle", "start": "2", "end": "4"},
-        ])
+        entries = json.dumps(
+            [
+                {"text": "Title", "start": "0", "end": "3"},
+                {"text": "Subtitle", "start": "2", "end": "4"},
+            ]
+        )
         result = _run_cli("text", test_video, "--entries-json", entries, "-o", out)
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -281,12 +322,21 @@ class TestTextReviewTimestamps:
         assert "text_layers" in data
         assert len(data["text_layers"]) == 2
 
-    def test_animate_output_includes_review_timestamps(self, test_video: str, output_dir: str) -> None:
+    def test_animate_output_includes_review_timestamps(
+        self, test_video: str, output_dir: str
+    ) -> None:
         out = os.path.join(output_dir, "animate_review.mp4")
-        layers = json.dumps([{
-            "type": "text", "text": "Hello", "start": 0.0, "end": 4.0,
-            "properties": {},
-        }])
+        layers = json.dumps(
+            [
+                {
+                    "type": "text",
+                    "text": "Hello",
+                    "start": 0.0,
+                    "end": 4.0,
+                    "properties": {},
+                }
+            ]
+        )
         result = _run_cli("animate", test_video, "--layers-json", layers, "-o", out)
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -313,25 +363,39 @@ class TestFileFlags:
         out = os.path.join(output_dir, "animate_file.mp4")
         layers_file = str(tmp_path / "layers.json")
         with open(layers_file, "w") as f:
-            json.dump([{
-                "type": "text", "text": "From File",
-                "start": 0.0, "end": 2.0, "properties": {},
-            }], f)
+            json.dump(
+                [
+                    {
+                        "type": "text",
+                        "text": "From File",
+                        "start": 0.0,
+                        "end": 2.0,
+                        "properties": {},
+                    }
+                ],
+                f,
+            )
         result = _run_cli("animate", test_video, "--layers-file", layers_file, "-o", out)
         assert result.returncode == 0
         data = json.loads(result.stdout)
         assert data["success"] is True
 
-    def test_entries_json_and_file_mutually_exclusive(self, test_video: str, output_dir: str, tmp_path: Any) -> None:
+    def test_entries_json_and_file_mutually_exclusive(
+        self, test_video: str, output_dir: str, tmp_path: Any
+    ) -> None:
         out = os.path.join(output_dir, "bad.mp4")
         entries_file = str(tmp_path / "entries.json")
         with open(entries_file, "w") as f:
             json.dump([{"text": "X"}], f)
         result = _run_cli(
-            "text", test_video,
-            "--entries-json", '[{"text": "Y"}]',
-            "--entries-file", entries_file,
-            "-o", out,
+            "text",
+            test_video,
+            "--entries-json",
+            '[{"text": "Y"}]',
+            "--entries-file",
+            entries_file,
+            "-o",
+            out,
         )
         assert result.returncode != 0
 
@@ -340,16 +404,18 @@ class TestEdlFieldErrors:
     """Tests for helpful errors when EDL fields are misspelled."""
 
     def test_missing_segments_in_concat(self, test_video: str) -> None:
-        edl = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "source": "$input.0", "start": "0", "end": "2"},
-                {"op": "trim", "source": "$input.0", "start": "2", "end": "4"},
-                {"op": "concat", "sources": ["$0", "$1"]},
-            ],
-            "output": {"path": "out.mp4", "codec": "copy"},
-        })
+        edl = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "source": "$input.0", "start": "0", "end": "2"},
+                    {"op": "trim", "source": "$input.0", "start": "2", "end": "4"},
+                    {"op": "concat", "sources": ["$0", "$1"]},
+                ],
+                "output": {"path": "out.mp4", "codec": "copy"},
+            }
+        )
         result = _run_cli("validate", "--edl-json", edl)
         assert "error" in result.stdout or result.returncode != 0
         data = json.loads(result.stdout)
@@ -366,18 +432,22 @@ class TestEdlFieldErrors:
             else:
                 errors = data.get("errors", [])
 
-        assert any(e.get("code") == "MISSING_FIELD" or e.get("code") == "INVALID_EDL" for e in errors)
+        assert any(
+            e.get("code") == "MISSING_FIELD" or e.get("code") == "INVALID_EDL" for e in errors
+        )
         assert any("segments" in e.get("message", "") for e in errors)
 
     def test_missing_source_in_trim(self, test_video: str) -> None:
-        edl = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [
-                {"op": "trim", "video": "$input.0", "start": "0", "end": "2"},
-            ],
-            "output": {"path": "out.mp4", "codec": "copy"},
-        })
+        edl = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [
+                    {"op": "trim", "video": "$input.0", "start": "0", "end": "2"},
+                ],
+                "output": {"path": "out.mp4", "codec": "copy"},
+            }
+        )
         result = _run_cli("validate", "--edl-json", edl)
         data = json.loads(result.stdout)
 
@@ -392,7 +462,9 @@ class TestEdlFieldErrors:
             else:
                 errors = data.get("errors", [])
 
-        assert any(e.get("code") == "MISSING_FIELD" or e.get("code") == "INVALID_EDL" for e in errors)
+        assert any(
+            e.get("code") == "MISSING_FIELD" or e.get("code") == "INVALID_EDL" for e in errors
+        )
         assert any("source" in e.get("message", "") for e in errors)
 
 
@@ -405,6 +477,36 @@ class TestAgentFirstCli:
         data = json.loads(result.stdout)
         assert "targets" in data
         assert "operation" in data["targets"]
+        assert "analysis" in data["targets"]
+
+    def test_schema_analysis_describes_output_shaping(self) -> None:
+        result = _run_cli("schema", "analysis")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["target"] == "analysis"
+        commands = data["schema"]["commands"]
+
+        assert commands["beats"]["list_key"] == "beats"
+        assert commands["beats"]["supports"]["response_format"] == ["json", "ndjson"]
+        assert "--limit" in commands["beats"]["options"]
+        assert "--min-strength" in commands["beats"]["options"]
+        assert commands["keyframes"]["list_key"] == "keyframes"
+        assert "--fields" in commands["keyframes"]["options"]
+
+    def test_capabilities_includes_analysis_schema(self) -> None:
+        result = _run_cli("capabilities")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        analysis_schema = data["analysis_schema"]
+        assert analysis_schema["commands"]["silence"]["list_key"] == "silences"
+        assert analysis_schema["commands"]["summarize"]["supports"]["fields"] is True
+
+    def test_schema_command_lists_analysis_target(self) -> None:
+        result = _run_cli("schema", "command")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        schema_targets = data["schema"]["commands"]["schema"]["targets"]
+        assert "analysis" in schema_targets
 
     def test_schema_operation_trim(self) -> None:
         result = _run_cli("schema", "operation", "trim")
@@ -432,12 +534,14 @@ class TestAgentFirstCli:
         assert "background_color" in data["schema"]["properties"]
 
     def test_op_trim_dry_run(self, test_video: str, output_dir: str) -> None:
-        payload = json.dumps({
-            "source": test_video,
-            "start": "0",
-            "end": "2",
-            "output": {"path": os.path.join(output_dir, "from_op.mp4"), "codec": "copy"},
-        })
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "start": "0",
+                "end": "2",
+                "output": {"path": os.path.join(output_dir, "from_op.mp4"), "codec": "copy"},
+            }
+        )
         result = _run_cli("op", "trim", "--json", payload, "--dry-run")
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -445,53 +549,257 @@ class TestAgentFirstCli:
         assert data["validation"]["valid"] is True
 
     def test_op_crop_dry_run(self, test_video: str, output_dir: str) -> None:
-        payload = json.dumps({
-            "source": test_video,
-            "x": 100,
-            "y": 50,
-            "width": 320,
-            "height": 240,
-            "output": {"path": os.path.join(output_dir, "crop.mp4"), "codec": "libx264"},
-        })
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "x": 100,
+                "y": 50,
+                "width": 320,
+                "height": 240,
+                "output": {"path": os.path.join(output_dir, "crop.mp4"), "codec": "libx264"},
+            }
+        )
         result = _run_cli("op", "crop", "--json", payload, "--dry-run")
         assert result.returncode == 0
         data = json.loads(result.stdout)
         assert data["validation"]["valid"] is True
 
     def test_op_resize_dry_run(self, test_video: str, output_dir: str) -> None:
-        payload = json.dumps({
-            "source": test_video,
-            "width": 1080,
-            "height": 1920,
-            "fit": "contain",
-            "output": {"path": os.path.join(output_dir, "resize.mp4"), "codec": "libx264"},
-        })
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "width": 1080,
+                "height": 1920,
+                "fit": "contain",
+                "output": {"path": os.path.join(output_dir, "resize.mp4"), "codec": "libx264"},
+            }
+        )
         result = _run_cli("op", "resize", "--json", payload, "--dry-run")
         assert result.returncode == 0
         data = json.loads(result.stdout)
         assert data["validation"]["valid"] is True
 
     def test_op_rejects_unknown_fields(self, test_video: str, output_dir: str) -> None:
-        payload = json.dumps({
-            "source": test_video,
-            "start": "0",
-            "end": "2",
-            "unknown": "x",
-            "output": {"path": os.path.join(output_dir, "bad.mp4"), "codec": "copy"},
-        })
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "start": "0",
+                "end": "2",
+                "unknown": "x",
+                "output": {"path": os.path.join(output_dir, "bad.mp4"), "codec": "copy"},
+            }
+        )
         result = _run_cli("op", "trim", "--json", payload, "--dry-run")
         data = json.loads(result.stdout)
         assert data["error"] is True
         assert data["code"] in ("INVALID_ARGUMENT", "MISSING_FIELD")
 
+    def test_op_rejects_payload_type_mismatch(
+        self,
+        test_video: str,
+        output_dir: str,
+    ) -> None:
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "start": 0,
+                "end": "2",
+                "output": {
+                    "path": os.path.join(output_dir, "bad_type.mp4"),
+                    "codec": "copy",
+                },
+            }
+        )
+        result = _run_cli("op", "trim", "--json", payload, "--dry-run")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "INVALID_ARGUMENT"
+        assert data["context"]["field"] == "start"
+        assert "string" in data["message"]
+
+    def test_op_rejects_payload_enum_mismatch(
+        self,
+        test_video: str,
+        output_dir: str,
+    ) -> None:
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "width": 1080,
+                "height": 1920,
+                "fit": "cover",
+                "output": {
+                    "path": os.path.join(output_dir, "bad_enum.mp4"),
+                    "codec": "libx264",
+                },
+            }
+        )
+        result = _run_cli("op", "resize", "--json", payload, "--dry-run")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "INVALID_ARGUMENT"
+        assert data["context"]["field"] == "fit"
+        assert data["context"]["allowed"] == ["contain", "stretch"]
+
+    def test_op_rejects_payload_numeric_bounds(
+        self,
+        test_video: str,
+        output_dir: str,
+    ) -> None:
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "audio": test_video,
+                "mix_level": 2.0,
+                "output": {
+                    "path": os.path.join(output_dir, "bad_bounds.mp4"),
+                    "codec": "libx264",
+                },
+            }
+        )
+        result = _run_cli("op", "mix_audio", "--json", payload, "--dry-run")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "INVALID_ARGUMENT"
+        assert data["context"]["field"] == "mix_level"
+        assert data["context"]["maximum"] == 1
+
+    def test_op_rejects_speed_factor_below_documented_minimum(
+        self,
+        test_video: str,
+        output_dir: str,
+    ) -> None:
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "factor": 0.1,
+                "output": {
+                    "path": os.path.join(output_dir, "too_slow.mp4"),
+                    "codec": "libx264",
+                },
+            }
+        )
+        result = _run_cli("op", "speed", "--json", payload, "--dry-run")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "INVALID_ARGUMENT"
+        assert data["context"]["field"] == "factor"
+        assert data["context"]["minimum"] == 0.25
+
+    def test_op_rejects_text_entry_missing_text(
+        self,
+        test_video: str,
+        output_dir: str,
+    ) -> None:
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "entries": [{"position": "center"}],
+                "output": {
+                    "path": os.path.join(output_dir, "missing_text.mp4"),
+                    "codec": "libx264",
+                },
+            }
+        )
+        result = _run_cli("op", "text", "--json", payload, "--dry-run")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "MISSING_FIELD"
+        assert data["context"]["missing_fields"] == ["entries[0].text"]
+
+    def test_op_rejects_animation_keyframe_missing_value(
+        self,
+        test_video: str,
+        output_dir: str,
+    ) -> None:
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "layers": [
+                    {
+                        "type": "text",
+                        "text": "Intro",
+                        "properties": {
+                            "opacity": {
+                                "keyframes": [{"t": 0.0}],
+                            },
+                        },
+                    },
+                ],
+                "output": {
+                    "path": os.path.join(output_dir, "missing_keyframe_value.mp4"),
+                    "codec": "libx264",
+                },
+            }
+        )
+        result = _run_cli("op", "animate", "--json", payload, "--dry-run")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "MISSING_FIELD"
+        assert data["context"]["missing_fields"] == [
+            "layers[0].properties.opacity.keyframes[0].value",
+        ]
+
+    def test_op_rejects_text_animation_layer_missing_text(
+        self,
+        test_video: str,
+        output_dir: str,
+    ) -> None:
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "layers": [{"type": "text", "properties": {}}],
+                "output": {
+                    "path": os.path.join(output_dir, "missing_layer_text.mp4"),
+                    "codec": "libx264",
+                },
+            }
+        )
+        result = _run_cli("op", "animate", "--json", payload, "--dry-run")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "MISSING_FIELD"
+        assert data["context"]["missing_fields"] == ["layers[0].text"]
+
+    def test_op_rejects_image_animation_layer_missing_path(
+        self,
+        test_video: str,
+        output_dir: str,
+    ) -> None:
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "layers": [{"type": "image", "properties": {}}],
+                "output": {
+                    "path": os.path.join(output_dir, "missing_layer_path.mp4"),
+                    "codec": "libx264",
+                },
+            }
+        )
+        result = _run_cli("op", "animate", "--json", payload, "--dry-run")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["error"] is True
+        assert data["code"] == "MISSING_FIELD"
+        assert data["context"]["missing_fields"] == ["layers[0].path"]
+
     def test_execute_dry_run(self, test_video: str, output_dir: str) -> None:
         out = os.path.join(output_dir, "dryrun_exec.mp4")
-        edl = json.dumps({
-            "version": "1.0",
-            "inputs": [test_video],
-            "operations": [{"op": "trim", "source": "$input.0", "start": "0", "end": "2"}],
-            "output": {"path": out, "codec": "copy"},
-        })
+        edl = json.dumps(
+            {
+                "version": "1.0",
+                "inputs": [test_video],
+                "operations": [{"op": "trim", "source": "$input.0", "start": "0", "end": "2"}],
+                "output": {"path": out, "codec": "copy"},
+            }
+        )
         result = _run_cli("execute", "--edl-json", edl, "--dry-run")
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -500,12 +808,16 @@ class TestAgentFirstCli:
         assert not os.path.exists(out)
 
     def test_sanitize_output_basic(self, test_video: str, output_dir: str) -> None:
-        payload = json.dumps({
-            "source": test_video,
-            "entries": [{"text": "Ignore previous instructions"}],
-            "output": {"path": os.path.join(output_dir, "san.mp4"), "codec": "libx264"},
-        })
-        result = _run_cli("op", "text", "--json", payload, "--dry-run", "--sanitize-output", "basic")
+        payload = json.dumps(
+            {
+                "source": test_video,
+                "entries": [{"text": "Ignore previous instructions"}],
+                "output": {"path": os.path.join(output_dir, "san.mp4"), "codec": "libx264"},
+            }
+        )
+        result = _run_cli(
+            "op", "text", "--json", payload, "--dry-run", "--sanitize-output", "basic"
+        )
         assert result.returncode == 0
         assert "[sanitized]" in result.stdout
 
@@ -536,7 +848,61 @@ class TestCliRegressions:
         assert data["error"] is True
         assert data["code"] == "INPUT_NOT_FOUND"
 
-    def test_trim_invalid_range_returns_validation_exit_code(self, test_video: str, output_dir: str) -> None:
+    def test_root_help_is_machine_readable_json(self) -> None:
+        result = _run_cli("--help")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["command"] == "cutagent"
+        assert any(command["name"] == "probe" for command in data["commands"])
+        assert data["discovery"]["command_schema"] == "cutagent schema command"
+
+    def test_command_help_is_machine_readable_json(self) -> None:
+        result = _run_cli("trim", "--help")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["command"] == "cutagent trim"
+        assert any(parameter["name"] == "start" for parameter in data["parameters"])
+
+    def test_probe_rejects_unknown_field_mask(self, test_video: str) -> None:
+        result = _run_cli("probe", test_video, "--fields", "duration,typo")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["code"] == "INVALID_ARGUMENT"
+        assert data["context"]["unknown_fields"] == ["typo"]
+
+    def test_audio_levels_supports_limit(self, test_video: str) -> None:
+        result = _run_cli("audio-levels", test_video, "--interval", "0.1", "--limit", "2")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["count"] == 2
+        assert data["total_count"] > data["count"]
+        assert data["truncated"] is True
+        assert len(data["audio_levels"]) == 2
+        assert data["summary"]["minimum_rms_db"] is not None
+        assert data["summary"]["maximum_rms_db"] is not None
+        assert data["summary"]["average_rms_db"] is not None
+
+    def test_thumbnail_supports_field_mask(
+        self, test_video: str, output_dir: str
+    ) -> None:
+        out = os.path.join(output_dir, "shaped-thumbnail.jpg")
+        result = _run_cli(
+            "thumbnail", test_video, "--at", "1", "-o", out, "--fields", "thumbnail.path"
+        )
+        assert result.returncode == 0
+        assert json.loads(result.stdout) == {"thumbnail": {"path": out}}
+
+    def test_summarize_ndjson_streams_typed_records(self, test_video: str) -> None:
+        result = _run_cli("summarize", test_video, "--response-format", "ndjson")
+        assert result.returncode == 0
+        records = [json.loads(line) for line in result.stdout.splitlines()]
+        record_types = {record["type"] for record in records}
+        assert "summary" in record_types
+        assert "scene" in record_types
+
+    def test_trim_invalid_range_returns_validation_exit_code(
+        self, test_video: str, output_dir: str
+    ) -> None:
         out = os.path.join(output_dir, "bad_trim.mp4")
         result = _run_cli("trim", test_video, "--start", "5", "--end", "1", "-o", out)
         assert result.returncode == 1
@@ -546,7 +912,20 @@ class TestCliRegressions:
 
     def test_crop_returns_structured_json(self, test_video: str, output_dir: str) -> None:
         out = os.path.join(output_dir, "crop.mp4")
-        result = _run_cli("crop", test_video, "--x", "100", "--y", "50", "--width", "320", "--height", "240", "-o", out)
+        result = _run_cli(
+            "crop",
+            test_video,
+            "--x",
+            "100",
+            "--y",
+            "50",
+            "--width",
+            "320",
+            "--height",
+            "240",
+            "-o",
+            out,
+        )
         assert result.returncode == 0
         data = json.loads(result.stdout)
         assert data["success"] is True
@@ -560,23 +939,44 @@ class TestCliRegressions:
         assert data["success"] is True
         assert os.path.exists(out)
 
-    def test_crop_invalid_region_returns_validation_exit_code(self, test_video: str, output_dir: str) -> None:
+    def test_crop_invalid_region_returns_validation_exit_code(
+        self, test_video: str, output_dir: str
+    ) -> None:
         out = os.path.join(output_dir, "bad_crop.mp4")
-        result = _run_cli("crop", test_video, "--x", "-1", "--y", "0", "--width", "320", "--height", "240", "-o", out)
+        result = _run_cli(
+            "crop",
+            test_video,
+            "--x",
+            "-1",
+            "--y",
+            "0",
+            "--width",
+            "320",
+            "--height",
+            "240",
+            "-o",
+            out,
+        )
         assert result.returncode == 1
         data = json.loads(result.stdout)
         assert data["error"] is True
         assert data["code"] == "INVALID_CROP_REGION"
 
-    def test_resize_invalid_fit_returns_validation_exit_code(self, test_video: str, output_dir: str) -> None:
+    def test_resize_invalid_fit_returns_validation_exit_code(
+        self, test_video: str, output_dir: str
+    ) -> None:
         out = os.path.join(output_dir, "bad_resize.mp4")
-        result = _run_cli("resize", test_video, "--width", "1080", "--height", "1920", "--fit", "cover", "-o", out)
+        result = _run_cli(
+            "resize", test_video, "--width", "1080", "--height", "1920", "--fit", "cover", "-o", out
+        )
         assert result.returncode == 1
         data = json.loads(result.stdout)
         assert data["error"] is True
         assert data["code"] == "INVALID_RESIZE_FIT"
 
-    def test_thumbnail_missing_at_is_structured_validation_error(self, test_video: str, output_dir: str) -> None:
+    def test_thumbnail_missing_at_is_structured_validation_error(
+        self, test_video: str, output_dir: str
+    ) -> None:
         out = os.path.join(output_dir, "thumb.jpg")
         result = _run_cli("thumbnail", test_video, "-o", out)
         assert result.returncode == 1
@@ -595,10 +995,14 @@ class TestCliRegressions:
 
     def test_beats_supports_limit_and_min_strength(self, test_video: str) -> None:
         result = _run_cli(
-            "beats", test_video,
-            "--limit", "10",
-            "--min-strength", "1.0",
-            "--response-format", "json",
+            "beats",
+            test_video,
+            "--limit",
+            "10",
+            "--min-strength",
+            "1.0",
+            "--response-format",
+            "json",
         )
         assert result.returncode == 0
         data = json.loads(result.stdout)
