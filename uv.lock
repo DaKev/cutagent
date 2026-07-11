@@ -387,7 +387,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
     { name = "static-ffmpeg", marker = "extra == 'ffmpeg'", specifier = ">=3.0" },
-    { name = "typer", specifier = ">=0.12.0" },
+    { name = "typer", specifier = ">=0.12.0,<0.25.0" },
 ]
 provides-extras = ["ffmpeg", "dev"]
 
