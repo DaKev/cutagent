@@ -364,6 +364,7 @@ name = "cutagent"
 version = "0.6.0"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "typer" },
 ]
 
@@ -380,6 +381,7 @@ ffmpeg = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
